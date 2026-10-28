@@ -15,11 +15,13 @@
 ## 快速开始
 
 ```bash
+go test ./...
+golangci-lint run
 go build -o apidoc ./cmd/apidoc
 ./apidoc
 ```
 
-当前会加载默认配置、打开数据目录下的库路径并跑迁移占位，随后进入 UI 占位（go-gui / Bun 尚未接入）。
+首次启动会按系统语言写入 `en` / `zh-Hans` / `zh-Hant`，数据在 `~/.apidoc`，应用配置在 OS 常规配置目录。
 
 ## 目录结构
 

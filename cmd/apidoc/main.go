@@ -2,12 +2,10 @@
 package main
 
 import (
-	"context"
 	"fmt"
 	"os"
 
 	"github.com/ilaziness/apidoc/internal/config"
-	"github.com/ilaziness/apidoc/internal/protocol"
 	"github.com/ilaziness/apidoc/internal/protocol/httpapi"
 	"github.com/ilaziness/apidoc/internal/service"
 	"github.com/ilaziness/apidoc/internal/store"
@@ -21,8 +19,7 @@ func main() {
 	}
 }
 
-// Startup order (docs/PRD.md §10):
-// load app config → open SQLite in data dir → migrate → UI.
+// Startup: load app config → open SQLite (migrates) → UI.
 func run() error {
 	cfg, err := config.Load()
 	if err != nil {
@@ -35,17 +32,10 @@ func run() error {
 	}
 	defer db.Close()
 
-	ctx := context.Background()
-	if err := db.Migrate(ctx); err != nil {
-		return fmt.Errorf("migrate: %w", err)
-	}
-
-	protocols := protocol.NewRegistry()
-	protocols.Register(httpapi.New())
-
 	svc := service.New(service.Deps{
-		Store:     db,
-		Protocols: protocols,
+		Store:  db,
+		Config: cfg,
+		HTTP:   httpapi.New(),
 	})
 
 	return ui.Run(cfg, svc)

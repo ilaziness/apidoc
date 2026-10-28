@@ -44,14 +44,15 @@ Agents that change behavior without updating docs are doing incomplete work.
 ```text
 cmd/apidoc/                 # main: config → store → migrate → ui
 internal/
-  ui/                       # go-gui only; no SQL, no net/http sends
+  ui/                       # go-gui only; files by window region (run/app/layout/sidebar/editor/http/panel)
   service/                  # use cases (was "app"; avoid vague name)
-  protocol/                 # Kind + Registry
+  protocol/                 # Kind constants (http/grpc/…)
   protocol/httpapi/         # HTTP send (package httpapi, NOT http)
   store/                    # Bun + SQLite + Migrate()
   store/migrations/         # migration scripts (embed later)
   openapi/                  # import only (2.0 / 3.0 / 3.1)
   config/                   # OS app-config dir (not inside data dir)
+  i18n/                     # en / zh-Hans / zh-Hant UI strings
 docs/                       # PRD and design docs
 ```
 
