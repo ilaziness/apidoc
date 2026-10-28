@@ -1,0 +1,95 @@
+# golangci-lint v2 config (tested with golangci-lint 2.x).
+# https://golangci-lint.run/docs/configuration/file/
+version: "2"
+
+run:
+  timeout: 5m
+
+linters:
+  # Baseline: errcheck, govet, ineffassign, staticcheck, unused.
+  default: standard
+  enable:
+    # HTTP / context (relevant to ApiDoc client)
+    - bodyclose
+    - noctx
+    - contextcheck
+    # Errors
+    - errorlint
+    - errname
+    # Correctness / security / style (commonly enabled)
+    - copyloopvar
+    - durationcheck
+    - gosec
+    - misspell
+    - modernize
+    - nilerr
+    - revive
+    - unconvert
+    - unparam
+    # Enforce project SQLite driver policy (see AGENTS.md / PRD)
+    - depguard
+  settings:
+    depguard:
+      rules:
+        sqlite:
+          deny:
+            - pkg: github.com/mattn/go-sqlite3
+              desc: use modernc.org/sqlite (pure Go); CGO SQLite is forbidden
+            - pkg: github.com/uptrace/bun/driver/sqliteshim
+              desc: sqliteshim may fall back to mattn under CGO; open modernc directly
+    errcheck:
+      check-type-assertions: true
+    errorlint:
+      errorf: true
+    govet:
+      enable:
+        - nilness
+        - shadow
+    misspell:
+      locale: US
+    revive:
+      rules:
+        - name: blank-imports
+        - name: context-as-argument
+        - name: dot-imports
+        - name: error-return
+        - name: error-strings
+        - name: error-naming
+        - name: exported
+        - name: if-return
+        - name: increment-decrement
+        - name: var-declaration
+        - name: package-comments
+        - name: range
+        - name: receiver-naming
+        - name: time-naming
+        - name: unexported-return
+        - name: indent-error-flow
+        - name: errorf
+        - name: empty-block
+        - name: superfluous-else
+        - name: unused-parameter
+        - name: unreachable-code
+        - name: redefines-builtin-id
+  exclusions:
+    presets:
+      - comments
+      - common-false-positives
+      - legacy
+      - std-error-handling
+    rules:
+      - path: (.+)_test\.go
+        linters:
+          - gosec
+          - dupl
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
+  settings:
+    gofmt:
+      simplify: true
+    goimports:
+      local-prefixes:
+        - github.com/ilaziness/apidoc
