@@ -89,7 +89,8 @@ Do not add `github.com/mattn/go-sqlite3`. Open SQLite with `modernc.org/sqlite` 
 - Errors: wrap with `%w` where useful; prefer `errors.New` / `fmt.Errorf` over custom string error types.
 - Comments: explain non-obvious constraints (especially PRD rules), not obvious code.
 - Prefer explicit names over abbreviations in exported APIs.
-- Typed constants for config enums (`config.ThemeSystem`, `config.ProxyOff`, …).
+- Typed constants for config enums (`config.LangEN` / `LangZHHans` / `LangZHHant`, `ThemeSystem`, `ProxyOff`, …).
+- UI i18n: only `en` / `zh-Hans` / `zh-Hant`; first launch detects OS locale and **persists** one of these (no lasting “follow OS” setting).
 
 ## Testing
 

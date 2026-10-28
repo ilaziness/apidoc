@@ -1,5 +1,5 @@
 // Package config loads application settings that live outside the data directory
-// (language, theme, data-dir path, global proxy). See docs/PRD.md §6.8–6.9.
+// (language, theme, data-dir path, global proxy). See docs/PRD.md §6.8–6.10.
 package config
 
 import (
@@ -9,9 +9,10 @@ import (
 
 // Language / theme / proxy mode values persisted in app config.
 const (
-	LangFollowOS = ""
-	LangZH       = "zh"
-	LangEN       = "en"
+	// UI languages (PRD §6.9). First launch maps OS locale into one of these and saves it.
+	LangEN     = "en"      // English
+	LangZHHans = "zh-Hans" // 简体中文
+	LangZHHant = "zh-Hant" // 繁體中文
 
 	ThemeLight  = "light"
 	ThemeDark   = "dark"
@@ -25,7 +26,7 @@ const (
 // Config is persisted under the OS app-config directory, not inside the data dir.
 type Config struct {
 	DataDir  string
-	Language string // LangFollowOS | LangZH | LangEN
+	Language string // LangEN | LangZHHans | LangZHHant (always concrete after first launch)
 	Theme    string // ThemeLight | ThemeDark | ThemeSystem
 	Proxy    ProxyConfig
 }
@@ -37,6 +38,7 @@ type ProxyConfig struct {
 }
 
 // Default returns PRD defaults without reading disk.
+// Language is left empty so Load/first-run can detect OS locale and persist it (PRD §6.9).
 func Default() (*Config, error) {
 	home, err := os.UserHomeDir()
 	if err != nil {
@@ -44,7 +46,7 @@ func Default() (*Config, error) {
 	}
 	return &Config{
 		DataDir:  filepath.Join(home, ".apidoc"),
-		Language: LangFollowOS,
+		Language: "", // unset until first-run detection writes LangEN | LangZHHans | LangZHHant
 		Theme:    ThemeSystem,
 		Proxy: ProxyConfig{
 			Mode: ProxySystem,
@@ -54,7 +56,7 @@ func Default() (*Config, error) {
 
 // Load reads app config from the OS config dir. Missing file yields Default().
 func Load() (*Config, error) {
-	// Persistence (JSON/TOML) lands with the settings UI; defaults are enough for boot.
+	// Persistence (JSON/TOML) and first-run language detection land with settings UI.
 	return Default()
 }
 
