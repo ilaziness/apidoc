@@ -5,61 +5,68 @@ import "github.com/ilaziness/apidoc/internal/config"
 
 // Catalog holds translated UI strings.
 type Catalog struct {
-	AppTitle         string
-	Collections      string
-	NewCollection    string
-	Rename           string
-	Delete           string
-	Save             string
-	Discard          string
-	Send             string
-	Cancel           string
-	Environments     string
-	NewEnvironment   string
-	Settings         string
-	Language         string
-	Theme            string
-	Proxy            string
-	DataDir          string
-	Trash            string
-	Restore          string
-	EmptyTrash       string
-	Folder           string
-	Markdown         string
-	HTTPRequest      string
-	Method           string
-	URL              string
-	PathParams       string
-	Query            string
-	Headers          string
-	Body             string
-	Auth             string
-	Options          string
-	Params           string
-	Response         string
-	ImportOpenAPI    string
-	ImportNew        string
-	ImportCurrent    string
-	FilePath         string
-	ConfirmDelete    string
-	UnsavedPrompt    string
-	NoSelection      string
-	EmptyHint        string
-	EditEnv          string
-	Variables        string
-	DeleteCollection string
-	Preview          string
-	Sending          string
-	Saved            string
-	FollowRedirects  string
-	SkipTLS          string
-	Timeout          string
-	ProxySystem      string
-	ProxyOff         string
-	ProxyManual      string
-	ThemeLight       string
-	ThemeDark        string
-	ThemeSystem      string
+	AppTitle           string
+	Home               string
+	Collections        string
+	NewCollection      string
+	Rename             string
+	Delete             string
+	Save               string
+	Discard            string
+	Send               string
+	Cancel             string
+	Environments       string
+	NewEnvironment     string
+	Settings           string
+	Language           string
+	Theme              string
+	Proxy              string
+	DataDir            string
+	Browse             string
+	Trash              string
+	Restore            string
+	EmptyTrash         string
+	Folder             string
+	Markdown           string
+	HTTPRequest        string
+	Method             string
+	URL                string
+	PathParams         string
+	Query              string
+	Headers            string
+	Body               string
+	Auth               string
+	Options            string
+	Params             string
+	Response           string
+	ImportOpenAPI      string
+	ImportNew          string
+	ImportCurrent      string
+	FilePath           string
+	ConfirmDelete      string
+	ConfirmCopyDataDir string
+	RestartRequired    string
+	UnsavedPrompt      string
+	NoSelection        string
+	EmptyHint          string
+	EditEnv            string
+	Variables          string
+	DeleteCollection   string
+	Preview            string
+	EditDoc            string
+	Debug              string
+	Description        string
+	Sending            string
+	Saved              string
+	FollowRedirects    string
+	SkipTLS            string
+	Timeout            string
+	ProxySystem        string
+	ProxyOff           string
+	ProxyManual        string
+	ThemeLight         string
+	ThemeDark          string
+	ThemeSystem        string
 }
 
 // T returns the catalog for lang (falls back to English).
@@ -75,10 +82,10 @@ func T(lang string) Catalog {
 }
 
 var en = Catalog{
-	AppTitle: "ApiDoc", Collections: "Collections", NewCollection: "New collection",
+	AppTitle: "ApiDoc", Home: "Home", Collections: "Collections", NewCollection: "New collection",
 	Rename: "Rename", Delete: "Delete", Save: "Save", Discard: "Discard", Send: "Send", Cancel: "Cancel",
 	Environments: "Environments", NewEnvironment: "New environment", Settings: "Settings",
-	Language: "Language", Theme: "Theme", Proxy: "Proxy", DataDir: "Data directory",
+	Language: "Language", Theme: "Theme", Proxy: "Proxy", DataDir: "Data directory", Browse: "Choose…",
 	Trash: "Trash", Restore: "Restore", EmptyTrash: "Empty trash",
 	Folder: "Folder", Markdown: "Markdown", HTTPRequest: "HTTP request",
 	Method: "Method", URL: "URL", PathParams: "Path params", Query: "Query",
@@ -86,20 +93,23 @@ var en = Catalog{
 	Response:      "Response",
 	ImportOpenAPI: "Import OpenAPI", ImportNew: "Import as new collection", ImportCurrent: "Import into current",
 	FilePath: "File path", ConfirmDelete: "Move to trash?",
-	UnsavedPrompt: "Save or discard changes first.", NoSelection: "Select an item",
+	ConfirmCopyDataDir: "Copy data to the new directory (same-name files overwritten). Restart the app afterwards.",
+	RestartRequired:    "Data copied. Restart the app to use the new directory.",
+	UnsavedPrompt:      "Save or discard changes first.", NoSelection: "Select an item",
 	EmptyHint: "Create a collection or import OpenAPI to start.",
 	EditEnv:   "Edit environment", Variables: "Variables", DeleteCollection: "Delete collection",
-	Preview: "Preview", Sending: "Sending…", Saved: "Saved",
+	Preview: "Preview", EditDoc: "Edit", Debug: "Debug", Description: "Description",
+	Sending: "Sending…", Saved: "Saved",
 	FollowRedirects: "Follow redirects", SkipTLS: "Skip TLS verify", Timeout: "Timeout (sec)",
 	ProxySystem: "System proxy", ProxyOff: "No proxy", ProxyManual: "Manual proxy",
 	ThemeLight: "Light", ThemeDark: "Dark", ThemeSystem: "System",
 }
 
 var zhHans = Catalog{
-	AppTitle: "ApiDoc", Collections: "文档集", NewCollection: "新建文档集",
+	AppTitle: "ApiDoc", Home: "首页", Collections: "文档集", NewCollection: "新建文档集",
 	Rename: "重命名", Delete: "删除", Save: "保存", Discard: "丢弃", Send: "发送", Cancel: "取消",
 	Environments: "环境", NewEnvironment: "新建环境", Settings: "设置",
-	Language: "界面语言", Theme: "主题", Proxy: "代理", DataDir: "数据目录",
+	Language: "界面语言", Theme: "主题", Proxy: "代理", DataDir: "数据目录", Browse: "选择…",
 	Trash: "回收站", Restore: "还原", EmptyTrash: "清空回收站",
 	Folder: "文件夹", Markdown: "Markdown", HTTPRequest: "HTTP 接口",
 	Method: "方法", URL: "URL", PathParams: "路径参数", Query: "Query",
@@ -107,20 +117,23 @@ var zhHans = Catalog{
 	Response:      "响应",
 	ImportOpenAPI: "导入 OpenAPI", ImportNew: "导入为新文档集", ImportCurrent: "导入到当前文档集",
 	FilePath: "文件路径", ConfirmDelete: "移入回收站？",
-	UnsavedPrompt: "请先保存或丢弃更改。", NoSelection: "请选择一项",
+	ConfirmCopyDataDir: "将把数据复制到新目录，同名文件会覆盖。完成后必须重启应用。",
+	RestartRequired:    "数据已复制。请重启应用以使用新目录。",
+	UnsavedPrompt:      "请先保存或丢弃更改。", NoSelection: "请选择一项",
 	EmptyHint: "新建文档集，或导入 OpenAPI 开始。",
 	EditEnv:   "编辑环境", Variables: "变量", DeleteCollection: "删除文档集",
-	Preview: "预览", Sending: "发送中…", Saved: "已保存",
+	Preview: "预览文档", EditDoc: "编辑文档", Debug: "调试", Description: "说明",
+	Sending: "发送中…", Saved: "已保存",
 	FollowRedirects: "跟随重定向", SkipTLS: "跳过 TLS 校验", Timeout: "超时（秒）",
 	ProxySystem: "系统代理", ProxyOff: "不使用代理", ProxyManual: "手动代理",
 	ThemeLight: "浅色", ThemeDark: "深色", ThemeSystem: "跟随系统",
 }
 
 var zhHant = Catalog{
-	AppTitle: "ApiDoc", Collections: "文件集", NewCollection: "新建文件集",
+	AppTitle: "ApiDoc", Home: "首頁", Collections: "文件集", NewCollection: "新建文件集",
 	Rename: "重新命名", Delete: "刪除", Save: "儲存", Discard: "捨棄", Send: "傳送", Cancel: "取消",
 	Environments: "環境", NewEnvironment: "新建環境", Settings: "設定",
-	Language: "介面語言", Theme: "主題", Proxy: "代理", DataDir: "資料目錄",
+	Language: "介面語言", Theme: "主題", Proxy: "代理", DataDir: "資料目錄", Browse: "選擇…",
 	Trash: "資源回收筒", Restore: "還原", EmptyTrash: "清空回收筒",
 	Folder: "資料夾", Markdown: "Markdown", HTTPRequest: "HTTP 介面",
 	Method: "方法", URL: "URL", PathParams: "路徑參數", Query: "Query",
@@ -128,10 +141,13 @@ var zhHant = Catalog{
 	Response:      "回應",
 	ImportOpenAPI: "匯入 OpenAPI", ImportNew: "匯入為新文件集", ImportCurrent: "匯入到目前文件集",
 	FilePath: "檔案路徑", ConfirmDelete: "移入資源回收筒？",
-	UnsavedPrompt: "請先儲存或捨棄變更。", NoSelection: "請選擇一項",
+	ConfirmCopyDataDir: "將把資料複製到新目錄，同名檔案會覆蓋。完成後必須重新啟動應用。",
+	RestartRequired:    "資料已複製。請重新啟動應用以使用新目錄。",
+	UnsavedPrompt:      "請先儲存或捨棄變更。", NoSelection: "請選擇一項",
 	EmptyHint: "新建文件集，或匯入 OpenAPI 開始。",
 	EditEnv:   "編輯環境", Variables: "變數", DeleteCollection: "刪除文件集",
-	Preview: "預覽", Sending: "傳送中…", Saved: "已儲存",
+	Preview: "預覽文件", EditDoc: "編輯文件", Debug: "偵錯", Description: "說明",
+	Sending: "傳送中…", Saved: "已儲存",
 	FollowRedirects: "跟隨重新導向", SkipTLS: "略過 TLS 驗證", Timeout: "逾時（秒）",
 	ProxySystem: "系統代理", ProxyOff: "不使用代理", ProxyManual: "手動代理",
 	ThemeLight: "淺色", ThemeDark: "深色", ThemeSystem: "跟隨系統",

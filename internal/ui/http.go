@@ -3,6 +3,7 @@ package ui
 import (
 	"context"
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -14,6 +15,120 @@ import (
 
 func httpWorkspace(app *App) gui.View {
 	cat := app.T()
+	return gui.Column(gui.ContainerCfg{
+		Sizing:  gui.FillFill,
+		Padding: gui.PaddingSmall,
+		Spacing: gui.SpacingSmall,
+		Content: []gui.View{
+			editorNameRow(app),
+			gui.TabControl(gui.TabControlCfg{
+				ID:       "http-work-tabs",
+				Sizing:   gui.FillFill,
+				Selected: app.WorkTab,
+				OnSelect: func(id string, ctx gui.EventCtx) {
+					appCtx(ctx).WorkTab = id
+				},
+				Items: []gui.TabItemCfg{
+					gui.NewTabItem(workPreview, cat.Preview, []gui.View{httpPreview(app)}),
+					gui.NewTabItem(workEdit, cat.EditDoc, []gui.View{httpEdit(app)}),
+					gui.NewTabItem(workDebug, cat.Debug, []gui.View{httpDebug(app)}),
+				},
+			}),
+		},
+	})
+}
+
+func httpPreview(app *App) gui.View {
+	cat := app.T()
+	spec := app.DraftHTTP
+	desc := spec.Description
+	if desc == "" {
+		desc = "—"
+	}
+	return gui.Column(gui.ContainerCfg{
+		Sizing:  gui.FillFill,
+		Spacing: gui.SpacingSmall,
+		Padding: gui.PaddingSmall,
+		Content: []gui.View{
+			gui.Label(cat.Method+": "+spec.Method, gui.CurrentTheme().TextStyleTitleSmall),
+			gui.Input(gui.InputCfg{
+				ID:       "http-preview-url",
+				Label:    cat.URL,
+				Text:     spec.URL,
+				ReadOnly: true,
+				Sizing:   gui.FillFit,
+			}),
+			gui.Input(gui.InputCfg{
+				ID:       "http-preview-desc",
+				Label:    cat.Description,
+				Mode:     gui.InputMultiline,
+				Text:     desc,
+				ReadOnly: true,
+				Sizing:   gui.FillFill,
+			}),
+		},
+	})
+}
+
+func httpEdit(app *App) gui.View {
+	cat := app.T()
+	spec := app.DraftHTTP
+	return gui.Column(gui.ContainerCfg{
+		Sizing:  gui.FillFill,
+		Spacing: gui.SpacingSmall,
+		Content: []gui.View{
+			gui.Row(gui.ContainerCfg{
+				Sizing:  gui.FillFit,
+				Spacing: gui.SpacingSmall,
+				VAlign:  gui.VAlignMiddle,
+				Content: []gui.View{
+					gui.Select(gui.SelectCfg{
+						ID:       "http-edit-method",
+						Label:    cat.Method,
+						MinWidth: 96,
+						Items:    []string{"GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"},
+						Selected: []string{spec.Method},
+						OnSelect: func(vals []string, ctx gui.EventCtx) {
+							if len(vals) == 0 {
+								return
+							}
+							a := appCtx(ctx)
+							a.DraftHTTP.Method = vals[0]
+							a.Dirty = true
+						},
+					}),
+					gui.Input(gui.InputCfg{
+						ID:     "http-edit-url",
+						Label:  cat.URL,
+						Text:   spec.URL,
+						Sizing: gui.FillFit,
+						OnTextChanged: func(s string, ctx gui.EventCtx) {
+							a := appCtx(ctx)
+							a.DraftHTTP.URL = s
+							a.Dirty = true
+						},
+					}),
+				},
+			}),
+			gui.Input(gui.InputCfg{
+				ID:     "http-edit-desc",
+				Label:  cat.Description,
+				Mode:   gui.InputMultiline,
+				Text:   spec.Description,
+				Sizing: gui.FillFit,
+				OnTextChanged: func(s string, ctx gui.EventCtx) {
+					a := appCtx(ctx)
+					a.DraftHTTP.Description = s
+					a.Dirty = true
+				},
+			}),
+			httpTabs(app, "edit"),
+		},
+	})
+}
+
+func httpDebug(app *App) gui.View {
+	cat := app.T()
 	spec := app.DraftHTTP
 	sendLabel := cat.Send
 	if app.isSending() {
@@ -24,7 +139,7 @@ func httpWorkspace(app *App) gui.View {
 		Sizing: gui.FillFit,
 		Segments: []gui.InputGroupSegment{
 			gui.InputGroupSelect(gui.SelectCfg{
-				ID:       "http-method",
+				ID:       "http-debug-method",
 				MinWidth: 96,
 				Items:    []string{"GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"},
 				Selected: []string{spec.Method},
@@ -38,7 +153,7 @@ func httpWorkspace(app *App) gui.View {
 				},
 			}),
 			gui.InputGroupInput(gui.InputCfg{
-				ID:     "http-url",
+				ID:     "http-debug-url",
 				Text:   spec.URL,
 				Sizing: gui.FillFit,
 				OnTextChanged: func(s string, ctx gui.EventCtx) {
@@ -66,7 +181,6 @@ func httpWorkspace(app *App) gui.View {
 		Sizing:  gui.FillFill,
 		Spacing: gui.SpacingSmall,
 		Content: []gui.View{
-			editorNameRow(app),
 			urlBar,
 			gui.Splitter(gui.SplitterCfg{
 				ID:          "http-split",
@@ -78,7 +192,7 @@ func httpWorkspace(app *App) gui.View {
 				},
 				First: gui.SplitterPaneCfg{
 					MinSize: 160,
-					Content: []gui.View{httpTabs(app)},
+					Content: []gui.View{httpTabs(app, "debug")},
 				},
 				Second: gui.SplitterPaneCfg{
 					MinSize: 120,
@@ -104,39 +218,39 @@ func httpWorkspace(app *App) gui.View {
 	})
 }
 
-func httpTabs(app *App) gui.View {
+func httpTabs(app *App, prefix string) gui.View {
 	cat := app.T()
 	return gui.TabControl(gui.TabControlCfg{
-		ID:       "http-tabs",
+		ID:       prefix + "-http-tabs",
 		Sizing:   gui.FillFill,
 		Selected: app.EditorTab,
 		OnSelect: func(id string, ctx gui.EventCtx) {
 			appCtx(ctx).EditorTab = id
 		},
 		Items: []gui.TabItemCfg{
-			gui.NewTabItem(tabParams, cat.Params, []gui.View{kvPairEditors(app)}),
+			gui.NewTabItem(tabParams, cat.Params, []gui.View{kvPairEditors(app, prefix)}),
 			gui.NewTabItem(tabHeaders, cat.Headers, []gui.View{
-				kvEditor("http-headers", cat.Headers, app.DraftHTTP.Headers, func(a *App, rows []httpapi.KV) {
+				kvEditor(prefix+"-http-headers", cat.Headers, app.DraftHTTP.Headers, func(a *App, rows []httpapi.KV) {
 					a.DraftHTTP.Headers = rows
 				}),
 			}),
-			gui.NewTabItem(tabBody, cat.Body, []gui.View{bodyEditor(app)}),
-			gui.NewTabItem(tabAuth, cat.Auth, []gui.View{authEditor(app)}),
-			gui.NewTabItem(tabOptions, cat.Options, []gui.View{optionsEditor(app)}),
+			gui.NewTabItem(tabBody, cat.Body, []gui.View{bodyEditor(app, prefix)}),
+			gui.NewTabItem(tabAuth, cat.Auth, []gui.View{authEditor(app, prefix)}),
+			gui.NewTabItem(tabOptions, cat.Options, []gui.View{optionsEditor(app, prefix)}),
 		},
 	})
 }
 
-func kvPairEditors(app *App) gui.View {
+func kvPairEditors(app *App, prefix string) gui.View {
 	cat := app.T()
 	return gui.Column(gui.ContainerCfg{
 		Sizing:  gui.FillFill,
 		Spacing: gui.SpacingSmall,
 		Content: []gui.View{
-			kvEditor("http-query", cat.Query, app.DraftHTTP.Query, func(a *App, rows []httpapi.KV) {
+			kvEditor(prefix+"-http-query", cat.Query, app.DraftHTTP.Query, func(a *App, rows []httpapi.KV) {
 				a.DraftHTTP.Query = rows
 			}),
-			kvEditor("http-path", cat.PathParams, app.DraftHTTP.PathParams, func(a *App, rows []httpapi.KV) {
+			kvEditor(prefix+"-http-path", cat.PathParams, app.DraftHTTP.PathParams, func(a *App, rows []httpapi.KV) {
 				a.DraftHTTP.PathParams = rows
 			}),
 		},
@@ -158,7 +272,7 @@ func kvEditor(id, label string, rows []httpapi.KV, apply func(*App, []httpapi.KV
 	})
 }
 
-func bodyEditor(app *App) gui.View {
+func bodyEditor(app *App, prefix string) gui.View {
 	kind := app.DraftHTTP.Body.Kind
 	if kind == "" {
 		kind = "none"
@@ -166,7 +280,7 @@ func bodyEditor(app *App) gui.View {
 	body := app.DraftHTTP.Body
 	fields := []gui.View{
 		gui.Select(gui.SelectCfg{
-			ID:       "body-kind",
+			ID:       prefix + "-body-kind",
 			Label:    app.T().Body,
 			Items:    []string{"none", "json", "form", "multipart", "raw", "binary"},
 			Selected: []string{kind},
@@ -183,7 +297,7 @@ func bodyEditor(app *App) gui.View {
 	switch kind {
 	case "json":
 		fields = append(fields, gui.Input(gui.InputCfg{
-			ID:     "body-json",
+			ID:     prefix + "-body-json",
 			Mode:   gui.InputMultiline,
 			Text:   body.JSON,
 			Sizing: gui.FillFill,
@@ -197,7 +311,7 @@ func bodyEditor(app *App) gui.View {
 	case "raw":
 		fields = append(fields,
 			gui.Input(gui.InputCfg{
-				ID:   "body-ct",
+				ID:   prefix + "-body-ct",
 				Text: body.ContentType,
 				OnTextChanged: func(s string, ctx gui.EventCtx) {
 					a := appCtx(ctx)
@@ -206,7 +320,7 @@ func bodyEditor(app *App) gui.View {
 				},
 			}),
 			gui.Input(gui.InputCfg{
-				ID:     "body-raw",
+				ID:     prefix + "-body-raw",
 				Mode:   gui.InputMultiline,
 				Text:   body.Raw,
 				Sizing: gui.FillFill,
@@ -219,18 +333,18 @@ func bodyEditor(app *App) gui.View {
 			}),
 		)
 	case "form":
-		fields = append(fields, kvEditor("body-form", "form", body.Form, func(a *App, rows []httpapi.KV) {
+		fields = append(fields, kvEditor(prefix+"-body-form", "form", body.Form, func(a *App, rows []httpapi.KV) {
 			a.DraftHTTP.Body.Kind = "form"
 			a.DraftHTTP.Body.Form = rows
 		}))
 	case "multipart":
-		fields = append(fields, kvEditor("body-mp", "multipart (file:path)", body.Multipart, func(a *App, rows []httpapi.KV) {
+		fields = append(fields, kvEditor(prefix+"-body-mp", "multipart (file:path)", body.Multipart, func(a *App, rows []httpapi.KV) {
 			a.DraftHTTP.Body.Kind = "multipart"
 			a.DraftHTTP.Body.Multipart = rows
 		}))
 	case "binary":
 		fields = append(fields, gui.Input(gui.InputCfg{
-			ID:   "body-bin",
+			ID:   prefix + "-body-bin",
 			Text: body.BinaryPath,
 			OnTextChanged: func(s string, ctx gui.EventCtx) {
 				a := appCtx(ctx)
@@ -243,7 +357,7 @@ func bodyEditor(app *App) gui.View {
 	return gui.Column(gui.ContainerCfg{Sizing: gui.FillFill, Spacing: gui.SpacingSmall, Content: fields})
 }
 
-func authEditor(app *App) gui.View {
+func authEditor(app *App, prefix string) gui.View {
 	auth := app.DraftHTTP.Auth
 	kind := "none"
 	if auth != nil && auth.Kind != "" {
@@ -251,7 +365,7 @@ func authEditor(app *App) gui.View {
 	}
 	fields := []gui.View{
 		gui.Select(gui.SelectCfg{
-			ID:       "auth-kind",
+			ID:       prefix + "-auth-kind",
 			Items:    []string{"none", "bearer", "basic", "apikey"},
 			Selected: []string{kind},
 			OnSelect: func(vals []string, ctx gui.EventCtx) {
@@ -260,7 +374,7 @@ func authEditor(app *App) gui.View {
 				}
 				a := appCtx(ctx)
 				if vals[0] == "none" {
-					a.DraftHTTP.Auth = nil
+					a.DraftHTTP.Auth = &httpapi.Auth{Kind: "none"}
 				} else {
 					cur := a.DraftHTTP.Auth
 					if cur == nil {
@@ -277,7 +391,7 @@ func authEditor(app *App) gui.View {
 		switch auth.Kind {
 		case "bearer":
 			fields = append(fields, gui.Input(gui.InputCfg{
-				ID:   "auth-token",
+				ID:   prefix + "-auth-token",
 				Text: auth.Token,
 				OnTextChanged: func(s string, ctx gui.EventCtx) {
 					a := appCtx(ctx)
@@ -288,7 +402,7 @@ func authEditor(app *App) gui.View {
 		case "basic":
 			fields = append(fields,
 				gui.Input(gui.InputCfg{
-					ID:   "auth-user",
+					ID:   prefix + "-auth-user",
 					Text: auth.User,
 					OnTextChanged: func(s string, ctx gui.EventCtx) {
 						a := appCtx(ctx)
@@ -297,7 +411,7 @@ func authEditor(app *App) gui.View {
 					},
 				}),
 				gui.Input(gui.InputCfg{
-					ID:   "auth-pass",
+					ID:   prefix + "-auth-pass",
 					Text: auth.Pass,
 					OnTextChanged: func(s string, ctx gui.EventCtx) {
 						a := appCtx(ctx)
@@ -309,7 +423,7 @@ func authEditor(app *App) gui.View {
 		case "apikey":
 			fields = append(fields,
 				gui.Input(gui.InputCfg{
-					ID:   "auth-key",
+					ID:   prefix + "-auth-key",
 					Text: auth.Key,
 					OnTextChanged: func(s string, ctx gui.EventCtx) {
 						a := appCtx(ctx)
@@ -318,7 +432,7 @@ func authEditor(app *App) gui.View {
 					},
 				}),
 				gui.Input(gui.InputCfg{
-					ID:   "auth-val",
+					ID:   prefix + "-auth-val",
 					Text: auth.Value,
 					OnTextChanged: func(s string, ctx gui.EventCtx) {
 						a := appCtx(ctx)
@@ -327,7 +441,7 @@ func authEditor(app *App) gui.View {
 					},
 				}),
 				gui.Select(gui.SelectCfg{
-					ID:       "auth-in",
+					ID:       prefix + "-auth-in",
 					Items:    []string{"header", "query"},
 					Selected: selectedOrEmpty(authIn(auth.In)),
 					OnSelect: func(vals []string, ctx gui.EventCtx) {
@@ -345,14 +459,14 @@ func authEditor(app *App) gui.View {
 	return gui.Column(gui.ContainerCfg{Spacing: gui.SpacingSmall, Content: fields})
 }
 
-func optionsEditor(app *App) gui.View {
+func optionsEditor(app *App, prefix string) gui.View {
 	cat := app.T()
 	spec := app.DraftHTTP
 	return gui.Column(gui.ContainerCfg{
 		Spacing: gui.SpacingSmall,
 		Content: []gui.View{
 			gui.Input(gui.InputCfg{
-				ID:    "opt-timeout",
+				ID:    prefix + "-opt-timeout",
 				Label: cat.Timeout,
 				Text:  strconv.Itoa(spec.TimeoutSec),
 				OnTextChanged: func(s string, ctx gui.EventCtx) {
@@ -365,12 +479,12 @@ func optionsEditor(app *App) gui.View {
 					a.Dirty = true
 				},
 			}),
-			gui.LabeledToggle("opt-redirect", cat.FollowRedirects, spec.FollowRedirects, func(ctx gui.EventCtx) {
+			gui.LabeledToggle(prefix+"-opt-redirect", cat.FollowRedirects, spec.FollowRedirects, func(ctx gui.EventCtx) {
 				a := appCtx(ctx)
 				a.DraftHTTP.FollowRedirects = !a.DraftHTTP.FollowRedirects
 				a.Dirty = true
 			}),
-			gui.LabeledToggle("opt-tls", cat.SkipTLS, spec.InsecureSkipVerify, func(ctx gui.EventCtx) {
+			gui.LabeledToggle(prefix+"-opt-tls", cat.SkipTLS, spec.InsecureSkipVerify, func(ctx gui.EventCtx) {
 				a := appCtx(ctx)
 				a.DraftHTTP.InsecureSkipVerify = !a.DraftHTTP.InsecureSkipVerify
 				a.Dirty = true
@@ -398,6 +512,8 @@ func sendCurrent(w *gui.Window) {
 		return
 	}
 	n.HTTP = raw
+	nodeID := a.SelectedNodeID
+	envID := a.SelectedEnvID
 
 	a.mu.Lock()
 	if a.cancel != nil {
@@ -405,42 +521,62 @@ func sendCurrent(w *gui.Window) {
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	a.cancel = cancel
+	a.sendGen++
+	gen := a.sendGen
 	a.sending = true
 	a.Status = a.T().Sending
 	a.mu.Unlock()
 
 	go func() {
-		res, err := a.Svc.SendHTTP(ctx, n, a.SelectedEnvID)
-		a.mu.Lock()
-		defer a.mu.Unlock()
-		a.sending = false
-		a.cancel = nil
-		if err != nil {
-			a.Status = err.Error()
-			a.RespText = err.Error()
-			return
-		}
-		var b strings.Builder
-		fmt.Fprintf(&b, "%s  %s\n", res.Status, res.Duration)
-		if res.Truncated {
-			b.WriteString("[truncated]\n")
-		}
-		b.Write(res.Body)
-		a.RespText = b.String()
-		a.Status = res.Status
+		res, err := a.Svc.SendHTTP(ctx, n, envID)
+		w.QueueCommand(func(win *gui.Window) {
+			app := appOf(win)
+			app.mu.Lock()
+			mine := app.sendGen == gen
+			if mine {
+				app.sending = false
+				app.cancel = nil
+			}
+			app.mu.Unlock()
+			if !mine || app.SelectedNodeID != nodeID {
+				return
+			}
+			if err != nil {
+				app.Status = err.Error()
+				app.RespText = err.Error()
+				return
+			}
+			app.RespText = formatHTTPResponse(res)
+			app.Status = res.Status
+		})
 	}()
+}
+
+func formatHTTPResponse(res *httpapi.Response) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "%s  %s\n", res.Status, res.Duration)
+	keys := make([]string, 0, len(res.Headers))
+	for k := range res.Headers {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	for _, k := range keys {
+		for _, v := range res.Headers[k] {
+			fmt.Fprintf(&b, "%s: %s\n", k, v)
+		}
+	}
+	if res.Truncated {
+		b.WriteString("[truncated]\n")
+	}
+	b.WriteByte('\n')
+	b.Write(res.Body)
+	return b.String()
 }
 
 func cancelSend(w *gui.Window) {
 	a := appOf(w)
-	a.mu.Lock()
-	if a.cancel != nil {
-		a.cancel()
-		a.cancel = nil
-	}
-	a.sending = false
+	a.stopSend()
 	a.Status = a.T().Cancel
-	a.mu.Unlock()
 }
 
 func ensureAuth(a *App) *httpapi.Auth {

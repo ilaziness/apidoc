@@ -80,6 +80,46 @@ func TestSendCancel(t *testing.T) {
 	}
 }
 
+func TestSendAuthInheritAndNone(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "Bearer from-collection" {
+			t.Errorf("auth=%s", r.Header.Get("Authorization"))
+		}
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer srv.Close()
+
+	spec := DefaultSpec()
+	spec.URL = srv.URL
+	res, err := New().Send(context.Background(), spec, SendOptions{
+		Proxy:          config.ProxyConfig{Mode: config.ProxyOff},
+		CollectionAuth: &Auth{Kind: "bearer", Token: "from-collection"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.StatusCode != http.StatusNoContent {
+		t.Fatalf("status=%d", res.StatusCode)
+	}
+
+	srv2 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "" {
+			t.Errorf("expected no auth, got %s", r.Header.Get("Authorization"))
+		}
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer srv2.Close()
+
+	spec.URL = srv2.URL
+	spec.Auth = &Auth{Kind: "none"}
+	if _, err := New().Send(context.Background(), spec, SendOptions{
+		Proxy:          config.ProxyConfig{Mode: config.ProxyOff},
+		CollectionAuth: &Auth{Kind: "bearer", Token: "from-collection"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestMaybePrettyJSON(t *testing.T) {
 	out := maybePrettyJSON([]byte(`{"a":1}`))
 	if !strings.Contains(string(out), "\n") {

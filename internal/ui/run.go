@@ -4,11 +4,13 @@
 //
 //	run.go      window bootstrap
 //	app.go      session state (selection, drafts, dirty)
-//	layout.go   top chrome + split + overlay router
+//	layout.go   icon toolbar + page body
+//	home.go     collection tiles
 //	sidebar.go  current collection tree
 //	editor.go   node workspace (name/save, folder, markdown)
-//	http.go     HTTP request / response
-//	panel.go    settings, import, trash, environment
+//	http.go     HTTP preview / edit / debug
+//	panel.go    settings, import, trash, environment (dialogs or trash page)
+//	colors.go   UI color constants (dialog chrome, etc.)
 //	text.go     Key:Value codecs used by editors
 //
 // Views call service; they do not open SQLite or send HTTP themselves.
@@ -32,18 +34,6 @@ func Run(cfg *config.Config, svc *service.Service) error {
 
 	app := newApp(svc)
 	app.refreshCollections(ctx)
-	if cfg.LastCollectionID > 0 {
-		for _, c := range app.Collections {
-			if c.ID == cfg.LastCollectionID {
-				app.selectCollection(ctx, c.ID)
-				break
-			}
-		}
-	}
-	if cfg.LastEnvironmentID > 0 {
-		app.SelectedEnvID = cfg.LastEnvironmentID
-		app.syncEnvDraft()
-	}
 	app.loadSettingsDraft(cfg)
 
 	w := gui.NewWindow(gui.WindowCfg{

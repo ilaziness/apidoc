@@ -44,7 +44,7 @@ Agents that change behavior without updating docs are doing incomplete work.
 ```text
 cmd/apidoc/                 # main: config → store → migrate → ui
 internal/
-  ui/                       # go-gui only; files by window region (run/app/layout/sidebar/editor/http/panel)
+  ui/                       # go-gui only; files by window region (run/app/layout/home/sidebar/editor/http/panel/colors)
   service/                  # use cases (was "app"; avoid vague name)
   protocol/                 # Kind constants (http/grpc/…)
   protocol/httpapi/         # HTTP send (package httpapi, NOT http)

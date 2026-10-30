@@ -11,9 +11,6 @@ import (
 
 func editorView(w *gui.Window, app *App) gui.View {
 	cat := app.T()
-	if app.SelectedCollectionID == 0 {
-		return paddedHint(cat.EmptyHint)
-	}
 	if app.SelectedNodeID == 0 {
 		return paddedHint(cat.NoSelection)
 	}
@@ -47,33 +44,26 @@ func editorNameRow(app *App) gui.View {
 					a.Dirty = true
 				},
 			}),
-			gui.TextButton(cat.Save, func(ctx gui.EventCtx) { saveCurrent(ctx.Window) }),
+			gui.TextButton(cat.Save, func(ctx gui.EventCtx) { _ = saveCurrent(ctx.Window) }),
 			gui.TextButtonVariant(cat.Discard, gui.ButtonGhost, func(ctx gui.EventCtx) {
 				appCtx(ctx).discardDraft(context.Background())
 			}),
 			gui.TextButtonVariant(cat.Delete, gui.ButtonDanger, func(ctx gui.EventCtx) {
-				a := appCtx(ctx)
-				if err := a.Svc.DeleteNode(context.Background(), a.SelectedNodeID); err != nil {
-					a.fail(err)
-					return
-				}
-				a.SelectedNodeID = 0
-				a.Dirty = false
-				a.refreshTree(context.Background())
+				confirmDeleteNode(ctx.Window)
 			}),
 		},
 	})
 }
 
-func saveCurrent(w *gui.Window) {
+func saveCurrent(w *gui.Window) error {
 	a := appOf(w)
 	if a.SelectedNodeID == 0 {
-		return
+		return nil
 	}
 	n, err := a.Svc.GetNode(context.Background(), a.SelectedNodeID)
 	if err != nil {
 		a.fail(err)
-		return
+		return err
 	}
 	n.Name = a.DraftName
 	switch n.Kind {
@@ -83,35 +73,40 @@ func saveCurrent(w *gui.Window) {
 		raw, err := httpapi.EncodeSpec(a.DraftHTTP)
 		if err != nil {
 			a.fail(err)
-			return
+			return err
 		}
 		n.HTTP = raw
 	}
 	if err := a.Svc.SaveNode(context.Background(), n); err != nil {
 		a.fail(err)
-		return
+		return err
 	}
 	a.Dirty = false
 	a.refreshTree(context.Background())
-	a.Status = a.T().Saved
 	toastOK(w, a.T().Saved)
+	return nil
 }
 
 func markdownWorkspace(w *gui.Window, app *App) gui.View {
 	cat := app.T()
 	return gui.Column(gui.ContainerCfg{
 		Sizing:  gui.FillFill,
+		Padding: gui.PaddingSmall,
 		Spacing: gui.SpacingSmall,
 		Content: []gui.View{
 			editorNameRow(app),
-			gui.Splitter(gui.SplitterCfg{
-				ID:          "md-split",
-				Sizing:      gui.FillFill,
-				Orientation: gui.SplitterHorizontal,
-				Ratio:       gui.SomeF(0.5),
-				First: gui.SplitterPaneCfg{
-					MinSize: 160,
-					Content: []gui.View{
+			gui.TabControl(gui.TabControlCfg{
+				ID:       "md-work-tabs",
+				Sizing:   gui.FillFill,
+				Selected: mdWorkTab(app.WorkTab),
+				OnSelect: func(id string, ctx gui.EventCtx) {
+					appCtx(ctx).WorkTab = id
+				},
+				Items: []gui.TabItemCfg{
+					gui.NewTabItem(workPreview, cat.Preview, []gui.View{
+						w.Markdown(gui.MarkdownCfg{Source: app.DraftMarkdown}),
+					}),
+					gui.NewTabItem(workEdit, cat.EditDoc, []gui.View{
 						gui.Input(gui.InputCfg{
 							ID:     "md-body",
 							Label:  cat.Markdown,
@@ -124,23 +119,24 @@ func markdownWorkspace(w *gui.Window, app *App) gui.View {
 								a.Dirty = true
 							},
 						}),
-					},
-				},
-				Second: gui.SplitterPaneCfg{
-					MinSize: 160,
-					Content: []gui.View{
-						gui.Label(cat.Preview, gui.CurrentTheme().TextStyleTitleSmall),
-						w.Markdown(gui.MarkdownCfg{Source: app.DraftMarkdown}),
-					},
+					}),
 				},
 			}),
 		},
 	})
 }
 
+func mdWorkTab(tab string) string {
+	if tab == workEdit {
+		return workEdit
+	}
+	return workPreview
+}
+
 func folderWorkspace(app *App) gui.View {
 	return gui.Column(gui.ContainerCfg{
 		Sizing:  gui.FillFill,
+		Padding: gui.PaddingSmall,
 		Spacing: gui.SpacingSmall,
 		Content: []gui.View{editorNameRow(app)},
 	})

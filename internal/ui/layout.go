@@ -9,164 +9,147 @@ import (
 func mainView(w *gui.Window) gui.View {
 	app := appOf(w)
 	theme := gui.CurrentTheme()
+	body := []gui.View{
+		toolbar(w, app),
+		bodyView(w, app),
+	}
+	if app.Status != "" {
+		body = append(body, gui.Label(app.Status, theme.TextStyleSecondary))
+	}
 	return gui.Column(gui.ContainerCfg{
-		Sizing: gui.FillFill,
-		Color:  theme.ColorBackground,
-		Content: []gui.View{
-			gui.Menubar(w, gui.MenubarCfg{
-				ID:     "menubar",
-				Sizing: gui.FillFit,
-				Action: menuAction,
-				Items:  menuItems(app),
-			}),
-			chrome(app),
-			gui.Separator(gui.SeparatorCfg{}),
-			gui.Splitter(gui.SplitterCfg{
-				ID:          "main-split",
-				Sizing:      gui.FillFill,
-				Orientation: gui.SplitterHorizontal,
-				Ratio:       gui.SomeF(app.SideRatio),
-				OnChange: func(ratio float32, _ gui.SplitterCollapsed, ctx gui.EventCtx) {
-					appCtx(ctx).SideRatio = ratio
-				},
-				First: gui.SplitterPaneCfg{
-					MinSize:     200,
-					Collapsible: true,
-					Content:     []gui.View{sidebar(w, app)},
-				},
-				Second: gui.SplitterPaneCfg{
-					MinSize: 480,
-					Content: []gui.View{mainPanel(w, app)},
-				},
-			}),
-			gui.Label(app.Status, theme.TextStyleSecondary),
-		},
+		Sizing:  gui.FillFill,
+		Color:   theme.ColorBackground,
+		Padding: gui.PaddingNone,
+		Spacing: gui.SpacingPx(0),
+		Content: body,
 	})
 }
 
-func menuItems(app *App) []gui.MenuItemCfg {
+func toolbar(w *gui.Window, app *App) gui.View {
 	cat := app.T()
-	return []gui.MenuItemCfg{
-		gui.MenuSubmenu("menu-collection", cat.Collections, []gui.MenuItemCfg{
-			gui.MenuItemText("menu-new-col", cat.NewCollection),
-			gui.MenuItemText("menu-import", cat.ImportOpenAPI),
-			gui.MenuSeparator(),
-			gui.MenuItemText("menu-delete-col", cat.DeleteCollection),
-		}),
-		gui.MenuSubmenu("menu-env", cat.Environments, []gui.MenuItemCfg{
-			gui.MenuItemText("menu-new-env", cat.NewEnvironment),
-			gui.MenuItemText("menu-edit-env", cat.EditEnv),
-		}),
-		gui.MenuItemText("menu-trash", cat.Trash),
-		gui.MenuItemText("menu-settings", cat.Settings),
+	theme := gui.CurrentTheme()
+	if !app.toolbarTipArmed {
+		app.toolbarTip = ""
 	}
-}
-
-func menuAction(id string, ctx gui.EventCtx) {
-	w := ctx.Window
-	a := appOf(w)
-	switch id {
-	case "menu-new-col":
-		askUnsaved(w, func() { createCollection(w) })
-	case "menu-import":
-		openImport(w)
-	case "menu-delete-col":
-		confirmDeleteCollection(w)
-	case "menu-new-env":
-		createEnvironment(w)
-	case "menu-edit-env":
-		if a.SelectedEnvID == 0 {
-			return
+	app.toolbarTipArmed = false
+	items := []gui.View{
+		iconBtn("tb-home", gui.IconHome, cat.Home, func(ctx gui.EventCtx) {
+			askUnsaved(ctx.Window, func() { appOf(ctx.Window).goHome() })
+		}),
+		iconBtn("tb-new-col", gui.IconPlus, cat.NewCollection, func(ctx gui.EventCtx) {
+			askUnsaved(ctx.Window, func() { createCollection(ctx.Window) })
+		}),
+		iconBtn("tb-import", gui.IconUpload, cat.ImportOpenAPI, func(ctx gui.EventCtx) {
+			openImport(ctx.Window)
+		}),
+	}
+	if app.Page == pageCollection {
+		envOpts := make([]gui.SelectOption, 0, len(app.Envs))
+		for _, e := range app.Envs {
+			envOpts = append(envOpts, gui.NewSelectOption(e.Name, idString(e.ID)))
 		}
-		a.syncEnvDraft()
-		a.Panel = panelEnv
-	case "menu-trash":
-		a.Panel = panelTrash
-	case "menu-settings":
-		a.Panel = panelSettings
-	}
-}
-
-func chrome(app *App) gui.View {
-	cat := app.T()
-	colOpts := make([]gui.SelectOption, 0, len(app.Collections))
-	for _, c := range app.Collections {
-		colOpts = append(colOpts, gui.NewSelectOption(c.Name, idString(c.ID)))
-	}
-	envOpts := make([]gui.SelectOption, 0, len(app.Envs))
-	for _, e := range app.Envs {
-		envOpts = append(envOpts, gui.NewSelectOption(e.Name, idString(e.ID)))
-	}
-	return gui.Row(gui.ContainerCfg{
-		Sizing:  gui.FillFit,
-		Padding: gui.PaddingSmall,
-		Spacing: gui.SpacingSmall,
-		VAlign:  gui.VAlignMiddle,
-		Content: []gui.View{
+		items = append(items,
 			gui.Select(gui.SelectCfg{
-				ID:          "chrome-collection",
-				Placeholder: cat.Collections,
-				Options:     colOpts,
-				Selected:    selectedOrEmpty(idString(app.SelectedCollectionID)),
-				MinWidth:    200,
+				ID:          "tb-env",
+				Placeholder: cat.Environments,
+				Options:     envOpts,
+				Selected:    selectedOrEmpty(idString(app.SelectedEnvID)),
+				MinWidth:    140,
 				OnSelect: func(vals []string, ctx gui.EventCtx) {
 					id, ok := parseID(vals)
 					if !ok {
 						return
 					}
-					askUnsaved(ctx.Window, func() {
-						appOf(ctx.Window).selectCollection(context.Background(), id)
-					})
+					a := appCtx(ctx)
+					a.SelectedEnvID = id
+					a.syncEnvDraft()
+					a.Svc.Config().LastEnvironmentID = id
+					_ = a.Svc.SaveConfig()
 				},
 			}),
-			gui.Row(gui.ContainerCfg{
-				Sizing:  gui.FillFit,
-				HAlign:  gui.HAlignEnd,
-				Spacing: gui.SpacingSmall,
-				VAlign:  gui.VAlignMiddle,
-				Content: []gui.View{
-					gui.Select(gui.SelectCfg{
-						ID:          "chrome-env",
-						Placeholder: cat.Environments,
-						Options:     envOpts,
-						Selected:    selectedOrEmpty(idString(app.SelectedEnvID)),
-						MinWidth:    160,
-						Disabled:    app.SelectedCollectionID == 0,
-						OnSelect: func(vals []string, ctx gui.EventCtx) {
-							id, ok := parseID(vals)
-							if !ok {
-								return
-							}
-							a := appCtx(ctx)
-							a.SelectedEnvID = id
-							a.syncEnvDraft()
-							a.Svc.Config().LastEnvironmentID = id
-							_ = a.Svc.SaveConfig()
-						},
-					}),
-				},
+			iconBtn("tb-new-env", gui.IconPlus, cat.NewEnvironment, func(ctx gui.EventCtx) {
+				createEnvironment(ctx.Window)
 			}),
+			iconBtn("tb-edit-env", gui.IconEdit, cat.EditEnv, func(ctx gui.EventCtx) {
+				openEnvDialog(ctx.Window)
+			}),
+			iconBtn("tb-del-col", gui.IconClose, cat.DeleteCollection, func(ctx gui.EventCtx) {
+				confirmDeleteCollection(ctx.Window)
+			}),
+		)
+	}
+	items = append(items, gui.Column(gui.ContainerCfg{Sizing: gui.FillFit}))
+	if app.toolbarTip != "" {
+		items = append(items, gui.Label(app.toolbarTip, theme.TextStyleSecondary))
+	}
+	items = append(items,
+		iconBtn("tb-trash", gui.IconTrash, cat.Trash, func(ctx gui.EventCtx) {
+			askUnsaved(ctx.Window, func() { appOf(ctx.Window).Page = pageTrash })
+		}),
+		iconBtn("tb-settings", gui.IconWrench, cat.Settings, func(ctx gui.EventCtx) {
+			openSettings(ctx.Window)
+		}),
+	)
+	return gui.Row(gui.ContainerCfg{
+		Sizing:  gui.FillFit,
+		Padding: gui.NewPadding(2, 4, 2, 4),
+		Spacing: gui.SpacingPx(2),
+		VAlign:  gui.VAlignMiddle,
+		Color:   theme.ColorPanel,
+		Content: items,
+	})
+}
+
+func iconBtn(id, icon, tip string, onClick func(gui.EventCtx)) gui.View {
+	theme := gui.CurrentTheme()
+	return gui.Button(gui.ButtonCfg{
+		ID:      id,
+		Variant: gui.ButtonGhost,
+		Padding: gui.NewPadding(4, 6, 4, 6),
+		Radius:  gui.RadiusSmall,
+		A11YCfg: gui.A11YCfg{A11YDescription: tip},
+		Content: []gui.View{
+			gui.Text(gui.TextCfg{Text: icon, TextStyle: theme.TextStyleIconXLarge}),
+		},
+		OnClick: onClick,
+		OnHover: func(ctx gui.EventCtx) {
+			a := appCtx(ctx)
+			a.toolbarTip = tip
+			a.toolbarTipArmed = true
 		},
 	})
 }
 
-func mainPanel(w *gui.Window, app *App) gui.View {
-	switch app.Panel {
-	case panelSettings:
-		return settingsView(app)
-	case panelTrash:
+func bodyView(w *gui.Window, app *App) gui.View {
+	switch app.Page {
+	case pageTrash:
 		return trashView(app)
-	case panelImport:
-		return importView(app)
-	case panelEnv:
-		return envView(app)
+	case pageCollection:
+		return collectionView(w, app)
 	default:
-		return editorView(w, app)
+		return homeView(app)
 	}
 }
 
-func closeEditor(ctx gui.EventCtx) {
-	appCtx(ctx).Panel = panelEditor
+func collectionView(w *gui.Window, app *App) gui.View {
+	return gui.Splitter(gui.SplitterCfg{
+		ID:          "main-split",
+		Sizing:      gui.FillFill,
+		Orientation: gui.SplitterHorizontal,
+		Ratio:       gui.SomeF(app.SideRatio),
+		OnChange: func(ratio float32, _ gui.SplitterCollapsed, ctx gui.EventCtx) {
+			appCtx(ctx).SideRatio = ratio
+		},
+		First: gui.SplitterPaneCfg{
+			MinSize:     200,
+			Collapsible: true,
+			Content:     []gui.View{sidebar(w, app)},
+		},
+		Second: gui.SplitterPaneCfg{
+			MinSize: 480,
+			Content: []gui.View{editorView(w, app)},
+		},
+	})
 }
 
 func paddedHint(text string) gui.View {
@@ -194,7 +177,9 @@ func askUnsaved(w *gui.Window, next func()) {
 				Spacing: gui.SpacingSmall,
 				Content: []gui.View{
 					gui.TextButtonVariant(c.Save, gui.ButtonPrimary, func(ctx gui.EventCtx) {
-						saveCurrent(ctx.Window)
+						if err := saveCurrent(ctx.Window); err != nil {
+							return
+						}
 						ctx.Window.DialogDismiss()
 						next()
 					}),
@@ -226,9 +211,6 @@ func createCollection(w *gui.Window) {
 
 func createEnvironment(w *gui.Window) {
 	a := appOf(w)
-	if a.SelectedCollectionID == 0 {
-		return
-	}
 	e, err := a.Svc.CreateEnvironment(context.Background(), a.SelectedCollectionID, "dev", map[string]string{"baseUrl": "http://localhost"})
 	if err != nil {
 		toastErr(w, err.Error())
@@ -237,14 +219,13 @@ func createEnvironment(w *gui.Window) {
 	a.refreshTree(context.Background())
 	a.SelectedEnvID = e.ID
 	a.syncEnvDraft()
-	a.Panel = panelEnv
+	a.Svc.Config().LastEnvironmentID = e.ID
+	_ = a.Svc.SaveConfig()
+	openEnvDialog(w)
 }
 
 func confirmDeleteCollection(w *gui.Window) {
 	a := appOf(w)
-	if a.SelectedCollectionID == 0 {
-		return
-	}
 	cat := a.T()
 	id := a.SelectedCollectionID
 	w.Dialog(gui.DialogCfg{
@@ -259,37 +240,35 @@ func confirmDeleteCollection(w *gui.Window) {
 				toastErr(win, err.Error())
 				return
 			}
-			app.SelectedCollectionID = 0
-			app.SelectedNodeID = 0
-			app.Dirty = false
-			app.Nodes = nil
-			app.Envs = nil
+			app.goHome()
 			app.refreshCollections(context.Background())
-			app.Status = ""
 			toastOK(win, cat.Saved)
 		},
 	})
 }
 
-func openImport(w *gui.Window) {
-	cat := appOf(w).T()
-	w.NativeOpenDialog(gui.NativeOpenDialogCfg{
-		Title: cat.ImportOpenAPI,
-		Filters: []gui.NativeFileFilter{
-			{Name: "OpenAPI", Extensions: []string{"json", "yaml", "yml"}},
-		},
-		OnDone: func(r gui.NativeDialogResult, win *gui.Window) {
-			if r.Status != gui.DialogOK {
+func confirmDeleteNode(w *gui.Window) {
+	a := appOf(w)
+	if a.SelectedNodeID == 0 {
+		return
+	}
+	cat := a.T()
+	id := a.SelectedNodeID
+	w.Dialog(gui.DialogCfg{
+		ID:            "delete-node",
+		DialogType:    gui.DialogConfirm,
+		Title:         cat.Delete,
+		Body:          cat.ConfirmDelete,
+		DefaultButton: gui.DialogButtonNo,
+		OnOkYes: func(win *gui.Window) {
+			app := appOf(win)
+			if err := app.Svc.DeleteNode(context.Background(), id); err != nil {
+				toastErr(win, err.Error())
 				return
 			}
-			paths := r.PathStrings()
-			if len(paths) == 0 {
-				return
-			}
-			a := appOf(win)
-			a.ImportPath = paths[0]
-			a.ImportURL = ""
-			a.Panel = panelImport
+			app.SelectedNodeID = 0
+			app.Dirty = false
+			app.refreshTree(context.Background())
 		},
 	})
 }

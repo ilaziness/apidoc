@@ -14,14 +14,14 @@ import (
 func sidebar(w *gui.Window, app *App) gui.View {
 	cat := app.T()
 	theme := gui.CurrentTheme()
-	head := []gui.View{
+	content := []gui.View{
 		gui.Input(gui.InputCfg{
 			ID:    "collection-rename",
 			Label: cat.Rename,
 			Text:  app.selectedCollectionName(),
 			OnTextChanged: func(s string, ctx gui.EventCtx) {
 				a := appCtx(ctx)
-				if a.SelectedCollectionID == 0 || strings.TrimSpace(s) == "" {
+				if strings.TrimSpace(s) == "" {
 					return
 				}
 				if err := a.Svc.RenameCollection(context.Background(), a.SelectedCollectionID, s); err != nil {
@@ -50,24 +50,21 @@ func sidebar(w *gui.Window, app *App) gui.View {
 				}),
 			},
 		}),
+		gui.Tree(gui.TreeCfg{
+			ID:     "nav-tree",
+			Sizing: gui.FillFill,
+			Nodes:  buildTreeNodes(app),
+			OnSelect: func(id string, ctx gui.EventCtx) {
+				nid, err := strconv.ParseInt(id, 10, 64)
+				if err != nil {
+					return
+				}
+				askUnsaved(ctx.Window, func() {
+					appOf(ctx.Window).loadNode(context.Background(), nid)
+				})
+			},
+		}),
 	}
-	if app.SelectedCollectionID == 0 {
-		head = []gui.View{gui.Label(cat.EmptyHint, theme.TextStyleSecondary)}
-	}
-	content := append(head, gui.Tree(gui.TreeCfg{
-		ID:     "nav-tree",
-		Sizing: gui.FillFill,
-		Nodes:  buildTreeNodes(app),
-		OnSelect: func(id string, ctx gui.EventCtx) {
-			nid, err := strconv.ParseInt(id, 10, 64)
-			if err != nil {
-				return
-			}
-			askUnsaved(ctx.Window, func() {
-				appOf(ctx.Window).loadNode(context.Background(), nid)
-			})
-		},
-	}))
 	col := gui.Column(gui.ContainerCfg{
 		Sizing:  gui.FillFill,
 		Spacing: gui.SpacingSmall,
@@ -94,17 +91,7 @@ func sidebar(w *gui.Window, app *App) gui.View {
 			case "ctx-md":
 				createUnder(ctx, store.NodeMarkdown)
 			case "ctx-delete":
-				a := appCtx(ctx)
-				if a.SelectedNodeID == 0 {
-					return
-				}
-				if err := a.Svc.DeleteNode(context.Background(), a.SelectedNodeID); err != nil {
-					toastErr(ctx.Window, err.Error())
-					return
-				}
-				a.SelectedNodeID = 0
-				a.Dirty = false
-				a.refreshTree(context.Background())
+				confirmDeleteNode(ctx.Window)
 			}
 		},
 		Content: []gui.View{col},
@@ -128,7 +115,7 @@ func createUnder(ctx gui.EventCtx, kind string) {
 		_, err = a.Svc.CreateMarkdown(context.Background(), a.SelectedCollectionID, parent, cat.Markdown, "")
 	}
 	if err != nil {
-		a.fail(err)
+		toastErr(ctx.Window, err.Error())
 		return
 	}
 	a.refreshTree(context.Background())

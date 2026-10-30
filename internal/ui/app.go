@@ -11,14 +11,12 @@ import (
 	"github.com/ilaziness/apidoc/internal/store"
 )
 
-type panel int
+type page int
 
 const (
-	panelEditor panel = iota
-	panelSettings
-	panelTrash
-	panelImport
-	panelEnv
+	pageHome page = iota
+	pageCollection
+	pageTrash
 )
 
 const (
@@ -27,6 +25,12 @@ const (
 	tabBody    = "body"
 	tabAuth    = "auth"
 	tabOptions = "options"
+)
+
+const (
+	workPreview = "preview"
+	workEdit    = "edit"
+	workDebug   = "debug"
 )
 
 // App is the go-gui window state: one session, one collection at a time.
@@ -46,13 +50,14 @@ type App struct {
 	DraftHTTP     httpapi.Spec
 	Dirty         bool
 
+	Page      page
+	WorkTab   string
 	EditorTab string
 	SideRatio float32
 	ReqRatio  float32
 
 	Status   string
 	RespText string
-	Panel    panel
 
 	SetLanguage  string
 	SetTheme     string
@@ -66,7 +71,12 @@ type App struct {
 	DraftEnvName string
 	DraftEnvVars string
 
+	// toolbarTip is the hover hint shown in the toolbar; armed while an icon is hovered.
+	toolbarTip      string
+	toolbarTipArmed bool
+
 	sending bool
+	sendGen int
 	mu      sync.Mutex
 	cancel  context.CancelFunc
 }
@@ -74,7 +84,8 @@ type App struct {
 func newApp(svc *service.Service) *App {
 	return &App{
 		Svc:       svc,
-		Panel:     panelEditor,
+		Page:      pageHome,
+		WorkTab:   workPreview,
 		EditorTab: tabParams,
 		SideRatio: 0.22,
 		ReqRatio:  0.55,
@@ -170,12 +181,37 @@ func (a *App) syncEnvDraft() {
 	}
 }
 
-func (a *App) selectCollection(ctx context.Context, id int64) {
-	preferredEnv := a.SelectedEnvID
-	if preferredEnv == 0 {
-		preferredEnv = a.Svc.Config().LastEnvironmentID
+func (a *App) stopSend() {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.cancel != nil {
+		a.cancel()
+		a.cancel = nil
 	}
+	a.sendGen++
+	a.sending = false
+}
 
+func (a *App) goHome() {
+	a.stopSend()
+	a.SelectedCollectionID = 0
+	a.SelectedNodeID = 0
+	a.SelectedEnvID = 0
+	a.Dirty = false
+	a.DraftName = ""
+	a.DraftMarkdown = ""
+	a.DraftHTTP = httpapi.DefaultSpec()
+	a.RespText = ""
+	a.Nodes = nil
+	a.Envs = nil
+	a.Page = pageHome
+	a.Status = ""
+}
+
+func (a *App) selectCollection(ctx context.Context, id int64) {
+	preferredEnv := a.Svc.Config().LastEnvironmentID
+
+	a.stopSend()
 	a.SelectedCollectionID = id
 	a.SelectedNodeID = 0
 	a.Dirty = false
@@ -183,7 +219,8 @@ func (a *App) selectCollection(ctx context.Context, id int64) {
 	a.DraftMarkdown = ""
 	a.DraftHTTP = httpapi.DefaultSpec()
 	a.RespText = ""
-	a.Panel = panelEditor
+	a.Page = pageCollection
+	a.WorkTab = workPreview
 	a.refreshTree(ctx)
 
 	a.SelectedEnvID = 0
@@ -210,16 +247,20 @@ func (a *App) loadNode(ctx context.Context, id int64) {
 		a.Status = err.Error()
 		return
 	}
+	a.stopSend()
 	a.SelectedNodeID = id
 	a.DraftName = n.Name
 	a.Dirty = false
 	a.RespText = ""
 	a.DraftMarkdown = ""
 	a.DraftHTTP = httpapi.DefaultSpec()
-	a.Panel = panelEditor
+	a.Page = pageCollection
 	switch n.Kind {
 	case store.NodeMarkdown:
 		a.DraftMarkdown = n.Markdown
+		if a.WorkTab == workDebug {
+			a.WorkTab = workPreview
+		}
 	case store.NodeHTTP:
 		spec, err := httpapi.DecodeSpec(n.HTTP)
 		if err != nil {
@@ -227,6 +268,8 @@ func (a *App) loadNode(ctx context.Context, id int64) {
 			return
 		}
 		a.DraftHTTP = spec
+	default:
+		a.WorkTab = workPreview
 	}
 }
 

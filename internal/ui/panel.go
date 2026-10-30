@@ -22,14 +22,56 @@ func importSource(a *App) (openapi.Source, error) {
 	}
 }
 
+func openImport(w *gui.Window) {
+	askUnsaved(w, func() {
+		a := appOf(w)
+		a.ImportPath = ""
+		a.ImportURL = ""
+		openImportDialog(w)
+	})
+}
+
+func openImportDialog(w *gui.Window) {
+	w.Dialog(gui.DialogCfg{
+		ID:         "import-dialog",
+		DialogType: gui.DialogCustom,
+		Title:      appOf(w).T().ImportOpenAPI,
+		Width:      520,
+		CustomView: func(win *gui.Window) gui.View {
+			return importView(appOf(win))
+		},
+	})
+}
+
+func pickImportFile(w *gui.Window) {
+	cat := appOf(w).T()
+	w.NativeOpenDialog(gui.NativeOpenDialogCfg{
+		Title: cat.ImportOpenAPI,
+		Filters: []gui.NativeFileFilter{
+			{Name: "OpenAPI", Extensions: []string{"json", "yaml", "yml"}},
+		},
+		OnDone: func(r gui.NativeDialogResult, win *gui.Window) {
+			if r.Status != gui.DialogOK {
+				return
+			}
+			paths := r.PathStrings()
+			if len(paths) == 0 {
+				return
+			}
+			a := appOf(win)
+			a.ImportPath = paths[0]
+			a.ImportURL = ""
+		},
+	})
+}
+
 func importView(app *App) gui.View {
 	cat := app.T()
 	return gui.Column(gui.ContainerCfg{
-		Sizing:  gui.FillFill,
+		Sizing:  gui.FillFit,
 		Spacing: gui.SpacingSmall,
 		Padding: gui.PaddingSmall,
 		Content: []gui.View{
-			gui.Label(cat.ImportOpenAPI, gui.CurrentTheme().TextStyleTitle),
 			gui.Row(gui.ContainerCfg{
 				Spacing: gui.SpacingSmall,
 				VAlign:  gui.VAlignMiddle,
@@ -41,48 +83,56 @@ func importView(app *App) gui.View {
 						Text:   app.ImportPath,
 						Sizing: gui.FillFit,
 						OnTextChanged: func(s string, ctx gui.EventCtx) {
-							appCtx(ctx).ImportPath = s
+							a := appCtx(ctx)
+							a.ImportPath = s
+							if s != "" {
+								a.ImportURL = ""
+							}
 						},
 					}),
-					gui.TextButton(cat.FilePath, func(ctx gui.EventCtx) {
-						openImport(ctx.Window)
+					gui.TextButton(cat.Browse, func(ctx gui.EventCtx) {
+						pickImportFile(ctx.Window)
 					}),
 				},
 			}),
 			gui.Input(gui.InputCfg{
 				ID:    "import-url",
-				Label: "URL",
+				Label: cat.URL,
 				Text:  app.ImportURL,
 				OnTextChanged: func(s string, ctx gui.EventCtx) {
-					appCtx(ctx).ImportURL = s
+					a := appCtx(ctx)
+					a.ImportURL = s
+					if s != "" {
+						a.ImportPath = ""
+					}
 				},
 			}),
 			gui.TextButton(cat.ImportNew, func(ctx gui.EventCtx) {
 				a := appCtx(ctx)
 				src, err := importSource(a)
 				if err != nil {
-					a.fail(err)
+					toastErr(ctx.Window, err.Error())
 					return
 				}
 				col, err := a.Svc.ImportOpenAPI(context.Background(), service.ImportOpenAPIOptions{Source: src})
 				if err != nil {
-					a.fail(err)
+					toastErr(ctx.Window, err.Error())
 					return
 				}
 				a.refreshCollections(context.Background())
 				a.selectCollection(context.Background(), col.ID)
-				a.Status = cat.Saved
+				ctx.Window.DialogDismiss()
 				toastOK(ctx.Window, cat.Saved)
 			}),
 			gui.TextButton(cat.ImportCurrent, func(ctx gui.EventCtx) {
 				a := appCtx(ctx)
 				if a.SelectedCollectionID == 0 {
-					a.Status = a.T().NoSelection
+					toastErr(ctx.Window, a.T().NoSelection)
 					return
 				}
 				src, err := importSource(a)
 				if err != nil {
-					a.fail(err)
+					toastErr(ctx.Window, err.Error())
 					return
 				}
 				_, err = a.Svc.ImportOpenAPI(context.Background(), service.ImportOpenAPIOptions{
@@ -90,126 +140,257 @@ func importView(app *App) gui.View {
 					IntoCollectionID: a.SelectedCollectionID,
 				})
 				if err != nil {
-					a.fail(err)
+					toastErr(ctx.Window, err.Error())
 					return
 				}
 				a.refreshTree(context.Background())
-				a.Panel = panelEditor
-				a.Status = cat.Saved
+				ctx.Window.DialogDismiss()
 				toastOK(ctx.Window, cat.Saved)
 			}),
-			gui.TextButton(cat.Cancel, closeEditor),
+			gui.TextButton(cat.Cancel, func(ctx gui.EventCtx) {
+				ctx.Window.DialogDismiss()
+			}),
+		},
+	})
+}
+
+func openSettings(w *gui.Window) {
+	a := appOf(w)
+	a.loadSettingsDraft(a.Svc.Config())
+	w.Dialog(gui.DialogCfg{
+		ID:         "settings-dialog",
+		DialogType: gui.DialogCustom,
+		Width:      520,
+		Padding:    gui.PaddingNone,
+		Radius:     gui.RadiusMedium,
+		Color:      colorDialogTitle(),
+		CustomView: func(win *gui.Window) gui.View {
+			return settingsView(appOf(win))
+		},
+	})
+}
+
+func openEnvDialog(w *gui.Window) {
+	a := appOf(w)
+	if a.SelectedEnvID == 0 {
+		return
+	}
+	a.syncEnvDraft()
+	w.Dialog(gui.DialogCfg{
+		ID:         "env-dialog",
+		DialogType: gui.DialogCustom,
+		Title:      a.T().EditEnv,
+		Width:      480,
+		Height:     360,
+		CustomView: func(win *gui.Window) gui.View {
+			return envView(appOf(win))
 		},
 	})
 }
 
 func settingsView(app *App) gui.View {
 	cat := app.T()
+	theme := gui.CurrentTheme()
+	fields := []gui.View{
+		gui.Select(gui.SelectCfg{
+			ID:    "set-lang",
+			Label: cat.Language,
+			Options: []gui.SelectOption{
+				gui.NewSelectOption("English", config.LangEN),
+				gui.NewSelectOption("简体中文", config.LangZHHans),
+				gui.NewSelectOption("繁體中文", config.LangZHHant),
+			},
+			Selected: []string{app.SetLanguage},
+			OnSelect: func(vals []string, ctx gui.EventCtx) {
+				if len(vals) > 0 {
+					appCtx(ctx).SetLanguage = vals[0]
+				}
+			},
+		}),
+		gui.Select(gui.SelectCfg{
+			ID:    "set-theme",
+			Label: cat.Theme,
+			Options: []gui.SelectOption{
+				gui.NewSelectOption(cat.ThemeLight, config.ThemeLight),
+				gui.NewSelectOption(cat.ThemeDark, config.ThemeDark),
+				gui.NewSelectOption(cat.ThemeSystem, config.ThemeSystem),
+			},
+			Selected: []string{app.SetTheme},
+			OnSelect: func(vals []string, ctx gui.EventCtx) {
+				if len(vals) > 0 {
+					appCtx(ctx).SetTheme = vals[0]
+				}
+			},
+		}),
+		gui.Select(gui.SelectCfg{
+			ID:    "set-proxy",
+			Label: cat.Proxy,
+			Options: []gui.SelectOption{
+				gui.NewSelectOption(cat.ProxySystem, config.ProxySystem),
+				gui.NewSelectOption(cat.ProxyOff, config.ProxyOff),
+				gui.NewSelectOption(cat.ProxyManual, config.ProxyManual),
+			},
+			Selected: []string{app.SetProxyMode},
+			OnSelect: func(vals []string, ctx gui.EventCtx) {
+				if len(vals) > 0 {
+					appCtx(ctx).SetProxyMode = vals[0]
+				}
+			},
+		}),
+	}
+	if app.SetProxyMode == config.ProxyManual {
+		fields = append(fields, gui.Input(gui.InputCfg{
+			ID:    "proxy-url",
+			Label: cat.ProxyManual,
+			Text:  app.SetProxyURL,
+			OnTextChanged: func(s string, ctx gui.EventCtx) {
+				appCtx(ctx).SetProxyURL = s
+			},
+		}))
+	}
+	fields = append(fields,
+		gui.Label(cat.DataDir, theme.TextStyleSecondary),
+		gui.InputGroup(gui.InputGroupCfg{
+			ID:     "set-datadir-group",
+			Sizing: gui.FillFit,
+			Segments: []gui.InputGroupSegment{
+				gui.InputGroupInput(gui.InputCfg{
+					ID:       "data-dir",
+					Text:     app.SetDataDir,
+					ReadOnly: true,
+					Sizing:   gui.FillFit,
+				}),
+				gui.InputGroupButton(gui.ButtonCfg{
+					ID:    "data-dir-browse",
+					Label: cat.Browse,
+					OnClick: func(ctx gui.EventCtx) {
+						pickDataDir(ctx.Window)
+					},
+				}),
+			},
+		}),
+	)
 	return gui.Column(gui.ContainerCfg{
-		Sizing:  gui.FillFill,
-		Spacing: gui.SpacingSmall,
-		Padding: gui.PaddingSmall,
+		Sizing:       gui.FillFit,
+		Spacing:      gui.SpacingPx(0),
+		Padding:      gui.PaddingNone,
+		Radius:       gui.RadiusMedium,
+		SizeBorder:   gui.NoBorder,
+		Clip:         true,
+		ClipContents: true,
+		Color:        colorDialogBody(),
 		Content: []gui.View{
-			gui.Label(cat.Settings, gui.CurrentTheme().TextStyleTitle),
-			gui.Select(gui.SelectCfg{
-				ID:    "set-lang",
-				Label: cat.Language,
-				Options: []gui.SelectOption{
-					gui.NewSelectOption("English", config.LangEN),
-					gui.NewSelectOption("简体中文", config.LangZHHans),
-					gui.NewSelectOption("繁體中文", config.LangZHHant),
-				},
-				Selected: []string{app.SetLanguage},
-				OnSelect: func(vals []string, ctx gui.EventCtx) {
-					if len(vals) > 0 {
-						appCtx(ctx).SetLanguage = vals[0]
-					}
+			gui.Row(gui.ContainerCfg{
+				Sizing:     gui.FillFit,
+				Padding:    gui.NewPadding(6, 16, 6, 16),
+				Radius:     gui.NoRadius,
+				SizeBorder: gui.NoBorder,
+				Color:      colorDialogTitle(),
+				VAlign:     gui.VAlignMiddle,
+				Content: []gui.View{
+					gui.Label(cat.Settings, theme.TextStyleTitleSmall),
 				},
 			}),
-			gui.Select(gui.SelectCfg{
-				ID:    "set-theme",
-				Label: cat.Theme,
-				Options: []gui.SelectOption{
-					gui.NewSelectOption(cat.ThemeLight, config.ThemeLight),
-					gui.NewSelectOption(cat.ThemeDark, config.ThemeDark),
-					gui.NewSelectOption(cat.ThemeSystem, config.ThemeSystem),
-				},
-				Selected: []string{app.SetTheme},
-				OnSelect: func(vals []string, ctx gui.EventCtx) {
-					if len(vals) > 0 {
-						appCtx(ctx).SetTheme = vals[0]
-					}
+			gui.Separator(gui.SeparatorCfg{Color: colorDialogRule()}),
+			gui.Column(gui.ContainerCfg{
+				Sizing:  gui.FillFit,
+				Padding: gui.PaddingMedium,
+				Spacing: gui.SpacingSmall,
+				Content: fields,
+			}),
+			gui.Separator(gui.SeparatorCfg{Color: colorDialogRule()}),
+			gui.Row(gui.ContainerCfg{
+				Sizing:  gui.FillFit,
+				Padding: gui.PaddingMedium,
+				Spacing: gui.SpacingSmall,
+				HAlign:  gui.HAlignEnd,
+				VAlign:  gui.VAlignMiddle,
+				Content: []gui.View{
+					gui.TextButton(cat.Cancel, func(ctx gui.EventCtx) {
+						ctx.Window.DialogDismiss()
+					}),
+					gui.TextButtonVariant(cat.Save, gui.ButtonPrimary, func(ctx gui.EventCtx) {
+						a := appCtx(ctx)
+						if a.SetDataDir != "" && a.SetDataDir != a.Svc.Config().DataDir {
+							c := a.T()
+							ctx.Window.Dialog(gui.DialogCfg{
+								ID:            "copy-data-dir",
+								DialogType:    gui.DialogConfirm,
+								Title:         c.DataDir,
+								Body:          c.ConfirmCopyDataDir,
+								DefaultButton: gui.DialogButtonNo,
+								OnOkYes: func(win *gui.Window) {
+									persistSettings(win, true)
+								},
+							})
+							return
+						}
+						persistSettings(ctx.Window, false)
+					}),
 				},
 			}),
-			gui.Select(gui.SelectCfg{
-				ID:    "set-proxy",
-				Label: cat.Proxy,
-				Options: []gui.SelectOption{
-					gui.NewSelectOption(cat.ProxySystem, config.ProxySystem),
-					gui.NewSelectOption(cat.ProxyOff, config.ProxyOff),
-					gui.NewSelectOption(cat.ProxyManual, config.ProxyManual),
-				},
-				Selected: []string{app.SetProxyMode},
-				OnSelect: func(vals []string, ctx gui.EventCtx) {
-					if len(vals) > 0 {
-						appCtx(ctx).SetProxyMode = vals[0]
-					}
-				},
-			}),
-			gui.Input(gui.InputCfg{
-				ID:    "proxy-url",
-				Label: cat.ProxyManual,
-				Text:  app.SetProxyURL,
-				OnTextChanged: func(s string, ctx gui.EventCtx) {
-					appCtx(ctx).SetProxyURL = s
-				},
-			}),
-			gui.Input(gui.InputCfg{
-				ID:    "data-dir",
-				Label: cat.DataDir,
-				Text:  app.SetDataDir,
-				OnTextChanged: func(s string, ctx gui.EventCtx) {
-					appCtx(ctx).SetDataDir = s
-				},
-			}),
-			gui.TextButton(cat.Save, func(ctx gui.EventCtx) {
-				a := appCtx(ctx)
-				cfg := a.Svc.Config()
-				cfg.Language = a.SetLanguage
-				cfg.Theme = a.SetTheme
-				cfg.Proxy.Mode = a.SetProxyMode
-				cfg.Proxy.Manual = a.SetProxyURL
-				if a.SetDataDir != "" && a.SetDataDir != cfg.DataDir {
-					if err := config.CopyDataDir(cfg.DataDir, a.SetDataDir); err != nil {
-						a.fail(err)
-						return
-					}
-					cfg.DataDir = a.SetDataDir
-					if err := a.Svc.SaveConfig(); err != nil {
-						a.fail(err)
-						return
-					}
-					a.Status = "Data directory copied; please restart the app"
-					a.Panel = panelEditor
-					return
-				}
-				if err := a.Svc.SaveConfig(); err != nil {
-					a.fail(err)
-					return
-				}
-				applyWindowTheme(cfg)
-				a.Panel = panelEditor
-				a.Status = cat.Saved
-			}),
-			gui.TextButton(cat.Cancel, closeEditor),
 		},
 	})
 }
 
+func pickDataDir(w *gui.Window) {
+	a := appOf(w)
+	cat := a.T()
+	w.NativeFolderDialog(gui.NativeFolderDialogCfg{
+		Title:    cat.DataDir,
+		StartDir: a.SetDataDir,
+		OnDone: func(r gui.NativeDialogResult, win *gui.Window) {
+			if r.Status != gui.DialogOK {
+				return
+			}
+			paths := r.PathStrings()
+			if len(paths) == 0 {
+				return
+			}
+			appOf(win).SetDataDir = paths[0]
+		},
+	})
+}
+
+func persistSettings(w *gui.Window, copyDataDir bool) {
+	a := appOf(w)
+	cat := a.T()
+	cfg := a.Svc.Config()
+	if copyDataDir {
+		if err := config.CopyDataDir(cfg.DataDir, a.SetDataDir); err != nil {
+			toastErr(w, err.Error())
+			return
+		}
+		cfg.DataDir = a.SetDataDir
+	}
+	cfg.Language = a.SetLanguage
+	cfg.Theme = a.SetTheme
+	cfg.Proxy.Mode = a.SetProxyMode
+	cfg.Proxy.Manual = a.SetProxyURL
+	if err := a.Svc.SaveConfig(); err != nil {
+		toastErr(w, err.Error())
+		return
+	}
+	applyWindowTheme(cfg)
+	if copyDataDir {
+		a.Status = cat.RestartRequired
+		toastOK(w, cat.RestartRequired)
+	} else {
+		toastOK(w, cat.Saved)
+	}
+	w.DialogDismiss()
+}
+
 func trashView(app *App) gui.View {
 	cat := app.T()
-	cols, _ := app.Svc.ListTrashCollections(context.Background())
-	nodes, _ := app.Svc.ListTrashNodes(context.Background())
+	cols, err := app.Svc.ListTrashCollections(context.Background())
+	if err != nil {
+		app.fail(err)
+	}
+	nodes, err := app.Svc.ListTrashNodes(context.Background())
+	if err != nil {
+		app.fail(err)
+	}
 	items := []gui.View{gui.Label(cat.Trash, gui.CurrentTheme().TextStyleTitle)}
 	for _, c := range cols {
 		id := c.ID
@@ -221,7 +402,7 @@ func trashView(app *App) gui.View {
 				gui.TextButton(cat.Restore, func(ctx gui.EventCtx) {
 					a := appCtx(ctx)
 					if err := a.Svc.RestoreCollection(context.Background(), id); err != nil {
-						a.fail(err)
+						toastErr(ctx.Window, err.Error())
 						return
 					}
 					a.refreshCollections(context.Background())
@@ -240,7 +421,7 @@ func trashView(app *App) gui.View {
 				gui.TextButton(cat.Restore, func(ctx gui.EventCtx) {
 					a := appCtx(ctx)
 					if err := a.Svc.RestoreNode(context.Background(), id); err != nil {
-						a.fail(err)
+						toastErr(ctx.Window, err.Error())
 						return
 					}
 					a.refreshTree(context.Background())
@@ -252,12 +433,19 @@ func trashView(app *App) gui.View {
 		gui.TextButtonVariant(cat.EmptyTrash, gui.ButtonDanger, func(ctx gui.EventCtx) {
 			a := appCtx(ctx)
 			if err := a.Svc.EmptyTrash(context.Background()); err != nil {
-				a.fail(err)
+				toastErr(ctx.Window, err.Error())
 				return
 			}
-			a.Status = cat.Saved
+			toastOK(ctx.Window, cat.Saved)
 		}),
-		gui.TextButton(cat.Cancel, closeEditor),
+		gui.TextButton(cat.Cancel, func(ctx gui.EventCtx) {
+			a := appCtx(ctx)
+			if a.SelectedCollectionID != 0 {
+				a.Page = pageCollection
+				return
+			}
+			a.Page = pageHome
+		}),
 	)
 	return gui.Column(gui.ContainerCfg{
 		Sizing:  gui.FillFill,
@@ -274,7 +462,6 @@ func envView(app *App) gui.View {
 		Spacing: gui.SpacingSmall,
 		Padding: gui.PaddingSmall,
 		Content: []gui.View{
-			gui.Label(cat.EditEnv, gui.CurrentTheme().TextStyleTitle),
 			gui.Input(gui.InputCfg{
 				ID:    "env-name",
 				Label: cat.Rename,
@@ -300,17 +487,17 @@ func envView(app *App) gui.View {
 				}
 				e, err := a.Svc.GetEnvironment(context.Background(), a.SelectedEnvID)
 				if err != nil {
-					a.fail(err)
+					toastErr(ctx.Window, err.Error())
 					return
 				}
 				e.Name = a.DraftEnvName
 				if err := a.Svc.UpdateEnvironment(context.Background(), e, decodeMap(a.DraftEnvVars)); err != nil {
-					a.fail(err)
+					toastErr(ctx.Window, err.Error())
 					return
 				}
 				a.refreshTree(context.Background())
-				a.Panel = panelEditor
-				a.Status = cat.Saved
+				ctx.Window.DialogDismiss()
+				toastOK(ctx.Window, cat.Saved)
 			}),
 			gui.TextButtonVariant(cat.Delete, gui.ButtonDanger, func(ctx gui.EventCtx) {
 				a := appCtx(ctx)
@@ -318,7 +505,7 @@ func envView(app *App) gui.View {
 					return
 				}
 				if err := a.Svc.DeleteEnvironment(context.Background(), a.SelectedEnvID); err != nil {
-					a.fail(err)
+					toastErr(ctx.Window, err.Error())
 					return
 				}
 				a.SelectedEnvID = 0
@@ -327,9 +514,11 @@ func envView(app *App) gui.View {
 					a.SelectedEnvID = a.Envs[0].ID
 				}
 				a.syncEnvDraft()
-				a.Panel = panelEditor
+				ctx.Window.DialogDismiss()
 			}),
-			gui.TextButton(cat.Cancel, closeEditor),
+			gui.TextButton(cat.Cancel, func(ctx gui.EventCtx) {
+				ctx.Window.DialogDismiss()
+			}),
 		},
 	})
 }
