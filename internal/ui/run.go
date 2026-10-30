@@ -9,7 +9,8 @@
 //	sidebar.go  current collection tree
 //	editor.go   node workspace (name/save, folder, markdown)
 //	http.go     HTTP preview / edit / debug
-//	panel.go    settings, import, trash, environment (dialogs or trash page)
+//	panel.go    settings, import, new-project, trash, environment (dialogs or trash page)
+//	dialog.go   custom dialog chrome (title bar + × close)
 //	colors.go   UI color constants (dialog chrome, etc.)
 //	text.go     Key:Value codecs used by editors
 //
@@ -34,7 +35,6 @@ func Run(cfg *config.Config, svc *service.Service) error {
 
 	app := newApp(svc)
 	app.refreshCollections(ctx)
-	app.loadSettingsDraft(cfg)
 
 	w := gui.NewWindow(gui.WindowCfg{
 		State:  app,

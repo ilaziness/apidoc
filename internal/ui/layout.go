@@ -37,7 +37,7 @@ func toolbar(w *gui.Window, app *App) gui.View {
 			askUnsaved(ctx.Window, func() { appOf(ctx.Window).goHome() })
 		}),
 		iconBtn("tb-new-col", gui.IconPlus, cat.NewCollection, func(ctx gui.EventCtx) {
-			askUnsaved(ctx.Window, func() { createCollection(ctx.Window) })
+			openNewProjectDialog(ctx.Window)
 		}),
 		iconBtn("tb-import", gui.IconUpload, cat.ImportOpenAPI, func(ctx gui.EventCtx) {
 			openImport(ctx.Window)
@@ -84,7 +84,11 @@ func toolbar(w *gui.Window, app *App) gui.View {
 	}
 	items = append(items,
 		iconBtn("tb-trash", gui.IconTrash, cat.Trash, func(ctx gui.EventCtx) {
-			askUnsaved(ctx.Window, func() { appOf(ctx.Window).Page = pageTrash })
+			askUnsaved(ctx.Window, func() {
+				a := appOf(ctx.Window)
+				a.stopSend()
+				a.Page = pageTrash
+			})
 		}),
 		iconBtn("tb-settings", gui.IconWrench, cat.Settings, func(ctx gui.EventCtx) {
 			openSettings(ctx.Window)
@@ -166,15 +170,14 @@ func askUnsaved(w *gui.Window, next func()) {
 		next()
 		return
 	}
-	cat := a.T()
-	w.Dialog(gui.DialogCfg{
-		ID:         "unsaved-dialog",
-		DialogType: gui.DialogCustom,
-		Title:      cat.UnsavedPrompt,
-		CustomView: func(win *gui.Window) gui.View {
-			c := appOf(win).T()
-			return gui.Row(gui.ContainerCfg{
+	customDialog(w, "unsaved-dialog", 420, 0, func(win *gui.Window) gui.View {
+		c := appOf(win).T()
+		return dialogShell("unsaved", c.UnsavedPrompt, []gui.View{
+			gui.Row(gui.ContainerCfg{
+				Sizing:  gui.FillFit,
+				Padding: gui.PaddingMedium,
 				Spacing: gui.SpacingSmall,
+				HAlign:  gui.HAlignEnd,
 				Content: []gui.View{
 					gui.TextButtonVariant(c.Save, gui.ButtonPrimary, func(ctx gui.EventCtx) {
 						if err := saveCurrent(ctx.Window); err != nil {
@@ -188,25 +191,10 @@ func askUnsaved(w *gui.Window, next func()) {
 						ctx.Window.DialogDismiss()
 						next()
 					}),
-					gui.TextButton(c.Cancel, func(ctx gui.EventCtx) {
-						ctx.Window.DialogDismiss()
-					}),
 				},
-			})
-		},
+			}),
+		})
 	})
-}
-
-func createCollection(w *gui.Window) {
-	a := appOf(w)
-	cat := a.T()
-	c, err := a.Svc.CreateCollection(context.Background(), cat.NewCollection)
-	if err != nil {
-		toastErr(w, err.Error())
-		return
-	}
-	a.refreshCollections(context.Background())
-	a.selectCollection(context.Background(), c.ID)
 }
 
 func createEnvironment(w *gui.Window) {

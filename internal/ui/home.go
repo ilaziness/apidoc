@@ -12,7 +12,7 @@ func homeView(app *App) gui.View {
 	theme := gui.CurrentTheme()
 	tiles := make([]gui.View, 0, len(app.Collections)+1)
 	tiles = append(tiles, collectionTile("home-new", gui.IconPlus, cat.NewCollection, theme.TextStyleSecondary, func(ctx gui.EventCtx) {
-		askUnsaved(ctx.Window, func() { createCollection(ctx.Window) })
+		openNewProjectDialog(ctx.Window)
 	}))
 	for _, c := range app.Collections {
 		id := c.ID

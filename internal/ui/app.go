@@ -68,8 +68,9 @@ type App struct {
 	ImportPath string
 	ImportURL  string
 
-	DraftEnvName string
-	DraftEnvVars string
+	NewProjectName string
+	DraftEnvName   string
+	DraftEnvVars   string
 
 	// toolbarTip is the hover hint shown in the toolbar; armed while an icon is hovered.
 	toolbarTip      string

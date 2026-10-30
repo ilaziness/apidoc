@@ -29,7 +29,7 @@ go build -o apidoc ./cmd/apidoc
 | --- | --- |
 | `cmd/apidoc` | 进程入口与启动编排 |
 | `internal/ui` | go-gui 界面（禁止直接 SQL / net/http 发送） |
-| `internal/service` | 用例层（文档集、树、环境、导入、发送） |
+| `internal/service` | 用例层（项目/collection、树、环境、导入、发送） |
 | `internal/protocol` | 协议枚举与注册表 |
 | `internal/protocol/httpapi` | HTTP 发送实现（避免包名 `http` 与标准库冲突） |
 | `internal/store` | Bun + SQLite；迁移逻辑同包，`migrations/` 放脚本 |

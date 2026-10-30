@@ -9,7 +9,7 @@ ApiDoc is a **local desktop** API doc manager + HTTP debugger (Postman-like subs
 
 - Module path: **`github.com/ilaziness/apidoc`** (must match GitHub remote `ilaziness/apidoc`).
 - **No** login, teams, sync, or collaboration server in v1.
-- Top-level entity: **文档集 / collection** ≈ Apifox **项目**. No workspace/team layer in v1.
+- Top-level entity (UI: **项目 / Project**): code & SQLite still use **collection**. No workspace/team layer in v1.
 - UI: [go-gui](https://github.com/go-gui-org/go-gui) (no Electron / browser shell).
 - Data: SQLite via [Bun](https://bun.uptrace.dev); driver **must** be pure Go (`modernc.org/sqlite`). **Never** use `mattn/go-sqlite3`.
 - Schema changes: Bun migrations under `internal/store` (no `CREATE TABLE IF NOT EXISTS` as the migration strategy).
@@ -44,7 +44,7 @@ Agents that change behavior without updating docs are doing incomplete work.
 ```text
 cmd/apidoc/                 # main: config → store → migrate → ui
 internal/
-  ui/                       # go-gui only; files by window region (run/app/layout/home/sidebar/editor/http/panel/colors)
+  ui/                       # go-gui only; files by window region (run/app/layout/home/sidebar/editor/http/panel/dialog/colors)
   service/                  # use cases (was "app"; avoid vague name)
   protocol/                 # Kind constants (http/grpc/…)
   protocol/httpapi/         # HTTP send (package httpapi, NOT http)

@@ -3,6 +3,7 @@ package ui
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/go-gui-org/go-gui/gui"
 
@@ -27,20 +28,65 @@ func openImport(w *gui.Window) {
 		a := appOf(w)
 		a.ImportPath = ""
 		a.ImportURL = ""
-		openImportDialog(w)
+		customDialog(w, "import-dialog", 520, 0, func(win *gui.Window) gui.View {
+			return importView(appOf(win))
+		})
 	})
 }
 
-func openImportDialog(w *gui.Window) {
-	w.Dialog(gui.DialogCfg{
-		ID:         "import-dialog",
-		DialogType: gui.DialogCustom,
-		Title:      appOf(w).T().ImportOpenAPI,
-		Width:      520,
-		CustomView: func(win *gui.Window) gui.View {
-			return importView(appOf(win))
-		},
+func openNewProjectDialog(w *gui.Window) {
+	askUnsaved(w, func() {
+		appOf(w).NewProjectName = ""
+		customDialog(w, "new-project-dialog", 400, 0, func(win *gui.Window) gui.View {
+			return newProjectView(appOf(win))
+		})
 	})
+}
+
+func newProjectView(app *App) gui.View {
+	cat := app.T()
+	return dialogShell("new-project", cat.NewCollection, []gui.View{
+		gui.Column(gui.ContainerCfg{
+			Sizing:  gui.FillFit,
+			Padding: gui.PaddingMedium,
+			Spacing: gui.SpacingSmall,
+			Content: []gui.View{
+				gui.Input(gui.InputCfg{
+					ID:    "new-project-name",
+					Label: cat.Name,
+					Text:  app.NewProjectName,
+					OnTextChanged: func(s string, ctx gui.EventCtx) {
+						appCtx(ctx).NewProjectName = s
+					},
+				}),
+				gui.Row(gui.ContainerCfg{
+					Sizing: gui.FillFit,
+					HAlign: gui.HAlignEnd,
+					Content: []gui.View{
+						gui.TextButtonVariant(cat.OK, gui.ButtonPrimary, func(ctx gui.EventCtx) {
+							createProject(ctx.Window)
+						}),
+					},
+				}),
+			},
+		}),
+	})
+}
+
+func createProject(w *gui.Window) {
+	a := appOf(w)
+	name := strings.TrimSpace(a.NewProjectName)
+	if name == "" {
+		return
+	}
+	c, err := a.Svc.CreateCollection(context.Background(), name)
+	if err != nil {
+		toastErr(w, err.Error())
+		return
+	}
+	w.DialogDismiss()
+	a.refreshCollections(context.Background())
+	a.selectCollection(context.Background(), c.ID)
 }
 
 func pickImportFile(w *gui.Window) {
@@ -67,106 +113,97 @@ func pickImportFile(w *gui.Window) {
 
 func importView(app *App) gui.View {
 	cat := app.T()
-	return gui.Column(gui.ContainerCfg{
-		Sizing:  gui.FillFit,
-		Spacing: gui.SpacingSmall,
-		Padding: gui.PaddingSmall,
-		Content: []gui.View{
-			gui.Row(gui.ContainerCfg{
-				Spacing: gui.SpacingSmall,
-				VAlign:  gui.VAlignMiddle,
-				Sizing:  gui.FillFit,
-				Content: []gui.View{
-					gui.Input(gui.InputCfg{
-						ID:     "import-path",
-						Label:  cat.FilePath,
-						Text:   app.ImportPath,
-						Sizing: gui.FillFit,
-						OnTextChanged: func(s string, ctx gui.EventCtx) {
-							a := appCtx(ctx)
-							a.ImportPath = s
-							if s != "" {
-								a.ImportURL = ""
-							}
-						},
-					}),
-					gui.TextButton(cat.Browse, func(ctx gui.EventCtx) {
-						pickImportFile(ctx.Window)
-					}),
-				},
-			}),
-			gui.Input(gui.InputCfg{
-				ID:    "import-url",
-				Label: cat.URL,
-				Text:  app.ImportURL,
-				OnTextChanged: func(s string, ctx gui.EventCtx) {
+	return dialogShell("import", cat.ImportOpenAPI, []gui.View{
+		gui.Column(gui.ContainerCfg{
+			Sizing:  gui.FillFit,
+			Spacing: gui.SpacingSmall,
+			Padding: gui.PaddingMedium,
+			Content: []gui.View{
+				gui.Row(gui.ContainerCfg{
+					Spacing: gui.SpacingSmall,
+					VAlign:  gui.VAlignMiddle,
+					Sizing:  gui.FillFit,
+					Content: []gui.View{
+						gui.Input(gui.InputCfg{
+							ID:     "import-path",
+							Label:  cat.FilePath,
+							Text:   app.ImportPath,
+							Sizing: gui.FillFit,
+							OnTextChanged: func(s string, ctx gui.EventCtx) {
+								a := appCtx(ctx)
+								a.ImportPath = s
+								if s != "" {
+									a.ImportURL = ""
+								}
+							},
+						}),
+						gui.TextButton(cat.Browse, func(ctx gui.EventCtx) {
+							pickImportFile(ctx.Window)
+						}),
+					},
+				}),
+				gui.Input(gui.InputCfg{
+					ID:    "import-url",
+					Label: cat.URL,
+					Text:  app.ImportURL,
+					OnTextChanged: func(s string, ctx gui.EventCtx) {
+						a := appCtx(ctx)
+						a.ImportURL = s
+						if s != "" {
+							a.ImportPath = ""
+						}
+					},
+				}),
+				gui.TextButton(cat.ImportNew, func(ctx gui.EventCtx) {
 					a := appCtx(ctx)
-					a.ImportURL = s
-					if s != "" {
-						a.ImportPath = ""
+					src, err := importSource(a)
+					if err != nil {
+						toastErr(ctx.Window, err.Error())
+						return
 					}
-				},
-			}),
-			gui.TextButton(cat.ImportNew, func(ctx gui.EventCtx) {
-				a := appCtx(ctx)
-				src, err := importSource(a)
-				if err != nil {
-					toastErr(ctx.Window, err.Error())
-					return
-				}
-				col, err := a.Svc.ImportOpenAPI(context.Background(), service.ImportOpenAPIOptions{Source: src})
-				if err != nil {
-					toastErr(ctx.Window, err.Error())
-					return
-				}
-				a.refreshCollections(context.Background())
-				a.selectCollection(context.Background(), col.ID)
-				ctx.Window.DialogDismiss()
-				toastOK(ctx.Window, cat.Saved)
-			}),
-			gui.TextButton(cat.ImportCurrent, func(ctx gui.EventCtx) {
-				a := appCtx(ctx)
-				if a.SelectedCollectionID == 0 {
-					toastErr(ctx.Window, a.T().NoSelection)
-					return
-				}
-				src, err := importSource(a)
-				if err != nil {
-					toastErr(ctx.Window, err.Error())
-					return
-				}
-				_, err = a.Svc.ImportOpenAPI(context.Background(), service.ImportOpenAPIOptions{
-					Source:           src,
-					IntoCollectionID: a.SelectedCollectionID,
-				})
-				if err != nil {
-					toastErr(ctx.Window, err.Error())
-					return
-				}
-				a.refreshTree(context.Background())
-				ctx.Window.DialogDismiss()
-				toastOK(ctx.Window, cat.Saved)
-			}),
-			gui.TextButton(cat.Cancel, func(ctx gui.EventCtx) {
-				ctx.Window.DialogDismiss()
-			}),
-		},
+					col, err := a.Svc.ImportOpenAPI(context.Background(), service.ImportOpenAPIOptions{Source: src})
+					if err != nil {
+						toastErr(ctx.Window, err.Error())
+						return
+					}
+					a.refreshCollections(context.Background())
+					a.selectCollection(context.Background(), col.ID)
+					ctx.Window.DialogDismiss()
+					toastOK(ctx.Window, cat.Saved)
+				}),
+				gui.TextButton(cat.ImportCurrent, func(ctx gui.EventCtx) {
+					a := appCtx(ctx)
+					if a.SelectedCollectionID == 0 {
+						toastErr(ctx.Window, a.T().NoSelection)
+						return
+					}
+					src, err := importSource(a)
+					if err != nil {
+						toastErr(ctx.Window, err.Error())
+						return
+					}
+					_, err = a.Svc.ImportOpenAPI(context.Background(), service.ImportOpenAPIOptions{
+						Source:           src,
+						IntoCollectionID: a.SelectedCollectionID,
+					})
+					if err != nil {
+						toastErr(ctx.Window, err.Error())
+						return
+					}
+					a.refreshTree(context.Background())
+					ctx.Window.DialogDismiss()
+					toastOK(ctx.Window, cat.Saved)
+				}),
+			},
+		}),
 	})
 }
 
 func openSettings(w *gui.Window) {
 	a := appOf(w)
 	a.loadSettingsDraft(a.Svc.Config())
-	w.Dialog(gui.DialogCfg{
-		ID:         "settings-dialog",
-		DialogType: gui.DialogCustom,
-		Width:      520,
-		Padding:    gui.PaddingNone,
-		Radius:     gui.RadiusMedium,
-		Color:      colorDialogTitle(),
-		CustomView: func(win *gui.Window) gui.View {
-			return settingsView(appOf(win))
-		},
+	customDialog(w, "settings-dialog", 520, 0, func(win *gui.Window) gui.View {
+		return settingsView(appOf(win))
 	})
 }
 
@@ -176,15 +213,8 @@ func openEnvDialog(w *gui.Window) {
 		return
 	}
 	a.syncEnvDraft()
-	w.Dialog(gui.DialogCfg{
-		ID:         "env-dialog",
-		DialogType: gui.DialogCustom,
-		Title:      a.T().EditEnv,
-		Width:      480,
-		Height:     360,
-		CustomView: func(win *gui.Window) gui.View {
-			return envView(appOf(win))
-		},
+	customDialog(w, "env-dialog", 480, 360, func(win *gui.Window) gui.View {
+		return envView(appOf(win))
 	})
 }
 
@@ -270,66 +300,32 @@ func settingsView(app *App) gui.View {
 			},
 		}),
 	)
-	return gui.Column(gui.ContainerCfg{
-		Sizing:       gui.FillFit,
-		Spacing:      gui.SpacingPx(0),
-		Padding:      gui.PaddingNone,
-		Radius:       gui.RadiusMedium,
-		SizeBorder:   gui.NoBorder,
-		Clip:         true,
-		ClipContents: true,
-		Color:        colorDialogBody(),
-		Content: []gui.View{
-			gui.Row(gui.ContainerCfg{
-				Sizing:     gui.FillFit,
-				Padding:    gui.NewPadding(6, 16, 6, 16),
-				Radius:     gui.NoRadius,
-				SizeBorder: gui.NoBorder,
-				Color:      colorDialogTitle(),
-				VAlign:     gui.VAlignMiddle,
-				Content: []gui.View{
-					gui.Label(cat.Settings, theme.TextStyleTitleSmall),
-				},
-			}),
-			gui.Separator(gui.SeparatorCfg{Color: colorDialogRule()}),
-			gui.Column(gui.ContainerCfg{
-				Sizing:  gui.FillFit,
-				Padding: gui.PaddingMedium,
-				Spacing: gui.SpacingSmall,
-				Content: fields,
-			}),
-			gui.Separator(gui.SeparatorCfg{Color: colorDialogRule()}),
-			gui.Row(gui.ContainerCfg{
-				Sizing:  gui.FillFit,
-				Padding: gui.PaddingMedium,
-				Spacing: gui.SpacingSmall,
-				HAlign:  gui.HAlignEnd,
-				VAlign:  gui.VAlignMiddle,
-				Content: []gui.View{
-					gui.TextButton(cat.Cancel, func(ctx gui.EventCtx) {
-						ctx.Window.DialogDismiss()
-					}),
-					gui.TextButtonVariant(cat.Save, gui.ButtonPrimary, func(ctx gui.EventCtx) {
-						a := appCtx(ctx)
-						if a.SetDataDir != "" && a.SetDataDir != a.Svc.Config().DataDir {
-							c := a.T()
-							ctx.Window.Dialog(gui.DialogCfg{
-								ID:            "copy-data-dir",
-								DialogType:    gui.DialogConfirm,
-								Title:         c.DataDir,
-								Body:          c.ConfirmCopyDataDir,
-								DefaultButton: gui.DialogButtonNo,
-								OnOkYes: func(win *gui.Window) {
-									persistSettings(win, true)
-								},
-							})
-							return
-						}
-						persistSettings(ctx.Window, false)
-					}),
-				},
-			}),
-		},
+	dataDirChanged := app.SetDataDir != "" && app.SetDataDir != app.Svc.Config().DataDir
+	if dataDirChanged {
+		fields = append(fields, gui.Label(cat.ConfirmCopyDataDir, theme.TextStyleSecondary))
+	}
+	return dialogShell("settings", cat.Settings, []gui.View{
+		gui.Column(gui.ContainerCfg{
+			Sizing:  gui.FillFit,
+			Padding: gui.PaddingMedium,
+			Spacing: gui.SpacingSmall,
+			Content: fields,
+		}),
+		gui.Separator(gui.SeparatorCfg{Color: colorDialogRule()}),
+		gui.Row(gui.ContainerCfg{
+			Sizing:  gui.FillFit,
+			Padding: gui.PaddingMedium,
+			Spacing: gui.SpacingSmall,
+			HAlign:  gui.HAlignEnd,
+			VAlign:  gui.VAlignMiddle,
+			Content: []gui.View{
+				gui.TextButtonVariant(cat.Save, gui.ButtonPrimary, func(ctx gui.EventCtx) {
+					a := appCtx(ctx)
+					copyData := a.SetDataDir != "" && a.SetDataDir != a.Svc.Config().DataDir
+					persistSettings(ctx.Window, copyData)
+				}),
+			},
+		}),
 	})
 }
 
@@ -457,68 +453,74 @@ func trashView(app *App) gui.View {
 
 func envView(app *App) gui.View {
 	cat := app.T()
-	return gui.Column(gui.ContainerCfg{
-		Sizing:  gui.FillFill,
-		Spacing: gui.SpacingSmall,
-		Padding: gui.PaddingSmall,
-		Content: []gui.View{
-			gui.Input(gui.InputCfg{
-				ID:    "env-name",
-				Label: cat.Rename,
-				Text:  app.DraftEnvName,
-				OnTextChanged: func(s string, ctx gui.EventCtx) {
-					appCtx(ctx).DraftEnvName = s
-				},
-			}),
-			gui.Input(gui.InputCfg{
-				ID:     "env-vars",
-				Label:  cat.Variables + "  (Key:Value)",
-				Mode:   gui.InputMultiline,
-				Text:   app.DraftEnvVars,
-				Sizing: gui.FillFill,
-				OnTextChanged: func(s string, ctx gui.EventCtx) {
-					appCtx(ctx).DraftEnvVars = s
-				},
-			}),
-			gui.TextButton(cat.Save, func(ctx gui.EventCtx) {
-				a := appCtx(ctx)
-				if a.SelectedEnvID == 0 {
-					return
-				}
-				e, err := a.Svc.GetEnvironment(context.Background(), a.SelectedEnvID)
-				if err != nil {
-					toastErr(ctx.Window, err.Error())
-					return
-				}
-				e.Name = a.DraftEnvName
-				if err := a.Svc.UpdateEnvironment(context.Background(), e, decodeMap(a.DraftEnvVars)); err != nil {
-					toastErr(ctx.Window, err.Error())
-					return
-				}
-				a.refreshTree(context.Background())
-				ctx.Window.DialogDismiss()
-				toastOK(ctx.Window, cat.Saved)
-			}),
-			gui.TextButtonVariant(cat.Delete, gui.ButtonDanger, func(ctx gui.EventCtx) {
-				a := appCtx(ctx)
-				if a.SelectedEnvID == 0 {
-					return
-				}
-				if err := a.Svc.DeleteEnvironment(context.Background(), a.SelectedEnvID); err != nil {
-					toastErr(ctx.Window, err.Error())
-					return
-				}
-				a.SelectedEnvID = 0
-				a.refreshTree(context.Background())
-				if len(a.Envs) > 0 {
-					a.SelectedEnvID = a.Envs[0].ID
-				}
-				a.syncEnvDraft()
-				ctx.Window.DialogDismiss()
-			}),
-			gui.TextButton(cat.Cancel, func(ctx gui.EventCtx) {
-				ctx.Window.DialogDismiss()
-			}),
-		},
+	return dialogShell("env", cat.EditEnv, []gui.View{
+		gui.Column(gui.ContainerCfg{
+			Sizing:  gui.FillFill,
+			Spacing: gui.SpacingSmall,
+			Padding: gui.PaddingMedium,
+			Content: []gui.View{
+				gui.Input(gui.InputCfg{
+					ID:    "env-name",
+					Label: cat.Name,
+					Text:  app.DraftEnvName,
+					OnTextChanged: func(s string, ctx gui.EventCtx) {
+						appCtx(ctx).DraftEnvName = s
+					},
+				}),
+				gui.Input(gui.InputCfg{
+					ID:     "env-vars",
+					Label:  cat.Variables + "  (Key:Value)",
+					Mode:   gui.InputMultiline,
+					Text:   app.DraftEnvVars,
+					Sizing: gui.FillFill,
+					OnTextChanged: func(s string, ctx gui.EventCtx) {
+						appCtx(ctx).DraftEnvVars = s
+					},
+				}),
+				gui.Row(gui.ContainerCfg{
+					Sizing:  gui.FillFit,
+					Spacing: gui.SpacingSmall,
+					HAlign:  gui.HAlignEnd,
+					Content: []gui.View{
+						gui.TextButtonVariant(cat.Delete, gui.ButtonDanger, func(ctx gui.EventCtx) {
+							a := appCtx(ctx)
+							if a.SelectedEnvID == 0 {
+								return
+							}
+							if err := a.Svc.DeleteEnvironment(context.Background(), a.SelectedEnvID); err != nil {
+								toastErr(ctx.Window, err.Error())
+								return
+							}
+							a.SelectedEnvID = 0
+							a.refreshTree(context.Background())
+							if len(a.Envs) > 0 {
+								a.SelectedEnvID = a.Envs[0].ID
+							}
+							a.syncEnvDraft()
+							ctx.Window.DialogDismiss()
+						}),
+						gui.TextButtonVariant(cat.Save, gui.ButtonPrimary, func(ctx gui.EventCtx) {
+							a := appCtx(ctx)
+							if a.SelectedEnvID == 0 {
+								return
+							}
+							e, err := a.Svc.GetEnvironment(context.Background(), a.SelectedEnvID)
+							if err != nil {
+								toastErr(ctx.Window, err.Error())
+								return
+							}
+							e.Name = a.DraftEnvName
+							if err := a.Svc.UpdateEnvironment(context.Background(), e, decodeMap(a.DraftEnvVars)); err != nil {
+								toastErr(ctx.Window, err.Error())
+								return
+							}
+							a.refreshTree(context.Background())
+							ctx.Window.DialogDismiss()
+							toastOK(ctx.Window, cat.Saved)
+						}),
+					},
+				}),
+			},
+		}),
 	})
 }

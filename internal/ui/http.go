@@ -576,7 +576,7 @@ func formatHTTPResponse(res *httpapi.Response) string {
 func cancelSend(w *gui.Window) {
 	a := appOf(w)
 	a.stopSend()
-	a.Status = a.T().Cancel
+	a.Status = ""
 }
 
 func ensureAuth(a *App) *httpapi.Auth {
